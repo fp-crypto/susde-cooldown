@@ -13,3 +13,6 @@
 	path = lib/tokenized-strategy-periphery
 	url = https://github.com/yearn/tokenized-strategy-periphery
 	branch = master
+[submodule "lib/ethena-assets"]
+	path = lib/ethena-assets
+	url = https://github.com/ethena-labs/bbp-public-assets
