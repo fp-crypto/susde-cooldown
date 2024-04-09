@@ -12,13 +12,29 @@ import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
 
-    address private constant SUSDE = 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
     address private constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
+    ISUSDe private constant SUSDE = ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
 
     uint64 public maxTendBasefee = 30e9; // 30 gwei
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
+    uint16 public minSUSDeDiscountBps = 50; // 0.50%
+    uint256 public depositLimit;
 
-    constructor(string memory _name) BaseHealthCheck(USDE, _name) {}
+    constructor(string memory _name) BaseHealthCheck(USDE, _name) {
+        _enableAuction(USDE, address(SUSDE));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      Public Setters
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Sets the deposit limit. Can only be called by management
+     * @param _depositLimit The deposit limit
+     */
+    function setDepositLimit(uint256 _depositLimit) external onlyManagement {
+        depositLimit = _depositLimit;
+    }
 
     /**
      * @notice Sets the max base fee for tends. Can only be called by management
@@ -39,8 +55,30 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         minCooldownAmount = _minCooldownAmount;
     }
 
+    /**
+     * @notice Sets the min discount on sUSDe to accept. Can only be called by management
+     * @param _minSUSDeDiscountBps The minimum discount in basis points when buying sUSDe
+     */
+    function setMinSUSDeDiscountBps(uint16 _minSUSDeDiscountBps)
+        external
+        onlyManagement
+    {
+        minSUSDeDiscountBps = _minSUSDeDiscountBps;
+    }
+
+    /**
+     * @notice Sets the auction contract. Can only be called by emergency authorized
+     * @param _auction The minimum auction contract address
+     */
+    function setAuction(address _auction) external onlyEmergencyAuthorized {
+        if (_auction != address(0)) {
+            require(Auction(_auction).want() == address(SUSDE)); // dev: wrong want
+        }
+        auction = _auction;
+    }
+
     /*//////////////////////////////////////////////////////////////
-                NEEDED TO BE OVERRIDDEN BY STRATEGIST
+                     BaseStrategy Overrides 
     //////////////////////////////////////////////////////////////*/
 
     /**
@@ -81,8 +119,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      */
     function _freeFunds(uint256 _amount) internal override {
         // 1. we can check if any sUSDe with redeemable/withdrawable
-        ISUSDe _susde = ISUSDe(SUSDE);
-        if (_susde.cooldownDuration() == 0) {
+        if (SUSDE.cooldownDuration() == 0) {
             uint256 _amountRedeemed = _redeemSUSDe();
             if (_amountRedeemed >= _amount) return;
         }
@@ -122,16 +159,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         override
         returns (uint256 _totalAssets)
     {
-        // TODO: Implement harvesting logic and accurate accounting EX:
-        //
-        //      if(!TokenizedStrategy.isShutdown()) {
-        //          _claimAndSellRewards();
-        //      }
-        //      _totalAssets = aToken.balanceOf(address(this)) + asset.balanceOf(address(this));
-        //
-        ISUSDe _susde = ISUSDe(SUSDE);
+        _adjustPosition();
+
         _totalAssets = _looseAsset();
-        _totalAssets += _susde.convertToAssets(_susde.balanceOf(address(this)));
+        _totalAssets += SUSDE.convertToAssets(SUSDE.balanceOf(address(this)));
         UserCooldown memory _cooldown = _cooldownStatus();
         _totalAssets += _cooldown.underlyingAmount;
     }
@@ -163,10 +194,9 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     ) public view override returns (uint256 _withdrawLimit) {
         _withdrawLimit = asset.balanceOf(address(this));
 
-        ISUSDe _susde = ISUSDe(SUSDE);
-        if (_susde.cooldownDuration() == 0) {
-            _withdrawLimit += _susde.convertToAssets(
-                _susde.balanceOf(address(this))
+        if (SUSDE.cooldownDuration() == 0) {
+            _withdrawLimit += SUSDE.convertToAssets(
+                SUSDE.balanceOf(address(this))
             );
         }
         UserCooldown memory _cooldown = _cooldownStatus();
@@ -199,16 +229,16 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @param . The address that is depositing into the strategy.
      * @return . The available amount the `_owner` can deposit in terms of `asset`
      *
-    function availableDepositLimit(
-        address _owner
-    ) public view override returns (uint256) {
-        TODO: If desired Implement deposit limit logic and any needed state variables .
-        
-        EX:    
-            uint256 totalAssets = TokenizedStrategy.totalAssets();
-            return totalAssets >= depositLimit ? 0 : depositLimit - totalAssets;
+     */
+    function availableDepositLimit(address _owner)
+        public
+        view
+        override
+        returns (uint256)
+    {
+        uint256 _totalAssets = TokenizedStrategy.totalAssets();
+        return _totalAssets >= depositLimit ? 0 : depositLimit - _totalAssets;
     }
-    */
 
     /**
      * @dev Optional function for strategist to override that can
@@ -262,7 +292,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             return false;
         }
 
-        if (ERC20(SUSDE).balanceOf(address(this)) >= minCooldownAmount) {
+        if (SUSDE.balanceOf(address(this)) >= minCooldownAmount) {
             return true;
         }
 
@@ -296,16 +326,33 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         _freeFunds(_amount);
     }
 
+    /*//////////////////////////////////////////////////////////////
+                     AuctionSwapper Overrides 
+    //////////////////////////////////////////////////////////////*/
+
+    function _auctionKicked(address _token)
+        internal
+        virtual
+        override
+        returns (uint256 _kicked)
+    {
+        require(_token == USDE); // dev: only sell usde
+        _kicked = super._auctionKicked(_token);
+        //require(_kicked >= minAjnaToAuction); // dev: too little
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                     Internal Doers of Things
+    //////////////////////////////////////////////////////////////*/
+
     /**
      * @notice Adjusts the strategy's position
      */
     function _adjustPosition() internal {
-        ISUSDe _susde = ISUSDe(SUSDE);
-
         // Check if we can directly redeem
         if (
-            _susde.cooldownDuration() == 0 &&
-            _susde.balanceOf(address(this)) != 0
+            SUSDE.cooldownDuration() == 0 &&
+            SUSDE.balanceOf(address(this)) != 0
         ) {
             _redeemSUSDe();
         }
@@ -325,7 +372,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         // Cooldown sUSDE if there is no funds being cooled down
         if (
             _cooldown.underlyingAmount == 0 &&
-            _susde.balanceOf(address(this)) >= minCooldownAmount
+            SUSDE.balanceOf(address(this)) >= minCooldownAmount
         ) {
             _cooldownSUSDe();
         }
@@ -338,12 +385,11 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @return . Amount of asset that will be released after cooldown
      */
     function _cooldownSUSDe() internal returns (uint256) {
-        ISUSDe _susde = ISUSDe(SUSDE);
         uint256 sharesToCooldown = Math.min(
-            _susde.balanceOf(address(this)),
-            _susde.maxRedeem(address(this))
+            SUSDE.balanceOf(address(this)),
+            SUSDE.maxRedeem(address(this))
         );
-        return _susde.cooldownShares(sharesToCooldown);
+        return SUSDE.cooldownShares(sharesToCooldown);
     }
 
     /**
@@ -351,21 +397,23 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @return . Amount of asset redeemed
      */
     function _redeemSUSDe() internal returns (uint256) {
-        ISUSDe _susde = ISUSDe(SUSDE);
         uint256 sharesToRedeem = Math.min(
-            _susde.balanceOf(address(this)),
-            _susde.maxRedeem(address(this))
+            SUSDE.balanceOf(address(this)),
+            SUSDE.maxRedeem(address(this))
         );
-        return _susde.redeem(sharesToRedeem, address(this), address(this));
+        return SUSDE.redeem(sharesToRedeem, address(this), address(this));
     }
 
     /**
      * @notice Unstakes cooldowned sUSDe
      */
     function _unstakeSUSDe() internal {
-        ISUSDe _susde = ISUSDe(SUSDE);
-        _susde.unstake(address(this));
+        SUSDE.unstake(address(this));
     }
+
+    /*//////////////////////////////////////////////////////////////
+                          Internal Views
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Returns this contract's loose asset
@@ -380,6 +428,6 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @return . The cooldown for this contract
      */
     function _cooldownStatus() internal view returns (UserCooldown memory) {
-        return ISUSDe(SUSDE).cooldowns(address(this));
+        return SUSDE.cooldowns(address(this));
     }
 }

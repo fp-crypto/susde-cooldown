@@ -78,6 +78,7 @@ contract Setup is ExtendedTest, IEvents {
         _strategy.setKeeper(keeper);
         // set treasury
         _strategy.setPerformanceFeeRecipient(performanceFeeRecipient);
+        _strategy.setDepositLimit(type(uint256).max);
         // set management of the strategy
         _strategy.setPendingManagement(management);
 
