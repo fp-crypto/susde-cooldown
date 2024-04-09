@@ -26,13 +26,23 @@ contract AuctionTaker is Governance, ReentrancyGuard, ITaker {
             address(this),
             abi.encode(_target, _calldata)
         );
+        (address _takeToken, address _giveToken, , ) = Auction(_auction)
+            .auctionInfo(_auctionId);
+        ERC20(_takeToken).safeTransfer(
+            msg.sender,
+            ERC20(_takeToken).balanceOf(address(this))
+        );
+        ERC20(_giveToken).safeTransfer(
+            msg.sender,
+            ERC20(_giveToken).balanceOf(address(this))
+        );
     }
 
     function auctionTakeCallback(
-        bytes32 /*_auctionId*/,
+        bytes32, /*_auctionId*/
         address _sender,
-        uint256 /*_amountTaken*/,
-        uint256 /*_amountNeeded*/,
+        uint256, /*_amountTaken*/
+        uint256 _amountNeeded,
         bytes calldata _data
     ) external nonReentrant {
         require(_sender == address(this));
@@ -41,7 +51,11 @@ contract AuctionTaker is Governance, ReentrancyGuard, ITaker {
             _data,
             (address, bytes)
         );
+        
         (bool success, ) = address(_target).call(_calldata);
-        require(success, "!success"); // dev: static call failed
+        require(success, "!success"); // dev: call failed
+
+        ERC20 _want = ERC20(Auction(msg.sender).want());
+        _want.safeApprove(msg.sender, _amountNeeded);
     }
 }
