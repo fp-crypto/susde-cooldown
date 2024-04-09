@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {Governance} from "@periphery/utils/Governance.sol";
 import {Auction} from "@periphery/Auctions/Auction.sol";
 import {ITaker} from "@periphery/interfaces/ITaker.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract AuctionTaker is Governance, ReentrancyGuard, ITaker {
+contract AuctionTaker is ReentrancyGuard, ITaker {
     using SafeERC20 for ERC20;
 
-    constructor() Governance(msg.sender) {}
+    constructor() {}
 
     function take(
         address _auction,
@@ -28,14 +27,16 @@ contract AuctionTaker is Governance, ReentrancyGuard, ITaker {
         );
         (address _takeToken, address _giveToken, , ) = Auction(_auction)
             .auctionInfo(_auctionId);
-        ERC20(_takeToken).safeTransfer(
-            msg.sender,
-            ERC20(_takeToken).balanceOf(address(this))
-        );
-        ERC20(_giveToken).safeTransfer(
-            msg.sender,
-            ERC20(_giveToken).balanceOf(address(this))
-        );
+        uint256 _takeSurplus = ERC20(_takeToken).balanceOf(address(this));
+
+        // send any surplus tokens to the caller
+        if (_takeSurplus > 0) {
+            ERC20(_takeToken).safeTransfer(msg.sender, _takeSurplus);
+        }
+        uint256 _giveSurplus = ERC20(_giveToken).balanceOf(address(this));
+        if (_giveSurplus > 0) {
+            ERC20(_giveToken).safeTransfer(msg.sender, _giveSurplus);
+        }
     }
 
     function auctionTakeCallback(
@@ -51,11 +52,15 @@ contract AuctionTaker is Governance, ReentrancyGuard, ITaker {
             _data,
             (address, bytes)
         );
-        
+
         (bool success, ) = address(_target).call(_calldata);
         require(success, "!success"); // dev: call failed
 
         ERC20 _want = ERC20(Auction(msg.sender).want());
         _want.safeApprove(msg.sender, _amountNeeded);
+    }
+
+    function sweep(address _token, uint256 _amount) external {
+        ERC20(_token).safeTransfer(msg.sender, _amount);
     }
 }
