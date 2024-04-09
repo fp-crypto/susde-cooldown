@@ -1,32 +1,43 @@
 // SPDX-License-Identifier: AGPL-3.0
-pragma solidity 0.8.18;
+pragma solidity ^0.8.18;
 
-import {BaseStrategy, ERC20} from "@tokenized-strategy/BaseStrategy.sol";
+import {ERC20} from "@tokenized-strategy/BaseStrategy.sol";
+import {BaseHealthCheck} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
+import {Auction, AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
+
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
-
-/**
- * The `TokenizedStrategy` variable can be used to retrieve the strategies
- * specific storage data your contract.
- *
- *       i.e. uint256 totalAssets = TokenizedStrategy.totalAssets()
- *
- * This can not be used for write functions. Any TokenizedStrategy
- * variables that need to be updated post deployment will need to
- * come from an external call from the strategies specific `management`.
- */
-
-// NOTE: To implement permissioned functions you can use the onlyManagement, onlyEmergencyAuthorized and onlyKeepers modifiers
-
-contract Strategy is BaseStrategy {
+contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
 
-    constructor(
-        address _asset,
-        string memory _name
-    ) BaseStrategy(_asset, _name) {}
+    address private constant SUSDE = 0x9D39A5DE30e57443BfF2A8307A4256c8797A3497;
+    address private constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
+
+    uint64 public maxTendBasefee = 30e9; // 30 gwei
+    uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
+
+    constructor(string memory _name) BaseHealthCheck(USDE, _name) {}
+
+    /**
+     * @notice Sets the max base fee for tends. Can only be called by management
+     * @param _maxTendBasefee The maximum base fee allowed
+     */
+    function setMaxTendBasefee(uint64 _maxTendBasefee) external onlyManagement {
+        maxTendBasefee = _maxTendBasefee;
+    }
+
+    /**
+     * @notice Sets the min amount to be cooled down. Can only be called by management
+     * @param _minCooldownAmount The minimum amount of sUSDe before a cooldown is triggered
+     */
+    function setMinCooldownAmount(uint80 _minCooldownAmount)
+        external
+        onlyManagement
+    {
+        minCooldownAmount = _minCooldownAmount;
+    }
 
     /*//////////////////////////////////////////////////////////////
                 NEEDED TO BE OVERRIDDEN BY STRATEGIST
@@ -44,9 +55,7 @@ contract Strategy is BaseStrategy {
      * to deposit in the yield source.
      */
     function _deployFunds(uint256 _amount) internal override {
-        // TODO: implement deposit logic EX:
-        //
-        //      lendingPool.deposit(address(asset), _amount ,0);
+        // do nothing
     }
 
     /**
@@ -71,9 +80,19 @@ contract Strategy is BaseStrategy {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
-        // TODO: implement withdraw logic EX:
-        //
-        //      lendingPool.withdraw(address(asset), _amount);
+        // 1. we can check if any sUSDe with redeemable/withdrawable
+        ISUSDe _susde = ISUSDe(SUSDE);
+        if (_susde.cooldownDuration() == 0) {
+            uint256 _amountRedeemed = _redeemSUSDe();
+            if (_amountRedeemed >= _amount) return;
+        }
+        UserCooldown memory _cooldown = _cooldownStatus();
+        if (
+            _cooldown.underlyingAmount != 0 &&
+            _cooldown.cooldownEnd <= block.timestamp
+        ) {
+            _unstakeSUSDe();
+        }
     }
 
     /**
@@ -110,7 +129,11 @@ contract Strategy is BaseStrategy {
         //      }
         //      _totalAssets = aToken.balanceOf(address(this)) + asset.balanceOf(address(this));
         //
-        _totalAssets = asset.balanceOf(address(this));
+        ISUSDe _susde = ISUSDe(SUSDE);
+        _totalAssets = _looseAsset();
+        _totalAssets += _susde.convertToAssets(_susde.balanceOf(address(this)));
+        UserCooldown memory _cooldown = _cooldownStatus();
+        _totalAssets += _cooldown.underlyingAmount;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -133,21 +156,26 @@ contract Strategy is BaseStrategy {
      * or conversion rates from shares to assets.
      *
      * @param . The address that is withdrawing from the strategy.
-     * @return . The available amount that can be withdrawn in terms of `asset`
+     * @return _withdrawLimit The available amount that can be withdrawn in terms of `asset`
      */
     function availableWithdrawLimit(
         address /*_owner*/
-    ) public view override returns (uint256) {
-        // NOTE: Withdraw limitations such as liquidity constraints should be accounted for HERE
-        //  rather than _freeFunds in order to not count them as losses on withdraws.
+    ) public view override returns (uint256 _withdrawLimit) {
+        _withdrawLimit = asset.balanceOf(address(this));
 
-        // TODO: If desired implement withdraw limit logic and any needed state variables.
-
-        // EX:
-        // if(yieldSource.notShutdown()) {
-        //    return asset.balanceOf(address(this)) + asset.balanceOf(yieldSource);
-        // }
-        return asset.balanceOf(address(this));
+        ISUSDe _susde = ISUSDe(SUSDE);
+        if (_susde.cooldownDuration() == 0) {
+            _withdrawLimit += _susde.convertToAssets(
+                _susde.balanceOf(address(this))
+            );
+        }
+        UserCooldown memory _cooldown = _cooldownStatus();
+        if (
+            _cooldown.underlyingAmount != 0 &&
+            _cooldown.cooldownEnd <= block.timestamp
+        ) {
+            _withdrawLimit += _cooldown.underlyingAmount;
+        }
     }
 
     /**
@@ -203,8 +231,10 @@ contract Strategy is BaseStrategy {
      *
      * @param _totalIdle The current amount of idle funds that are available to deploy.
      *
-    function _tend(uint256 _totalIdle) internal override {}
-    */
+     */
+    function _tend(uint256 _totalIdle) internal override {
+        _adjustPosition();
+    }
 
     /**
      * @dev Optional trigger to override if tend() will be used by the strategy.
@@ -212,8 +242,32 @@ contract Strategy is BaseStrategy {
      *
      * @return . Should return true if tend() should be called by keeper or false if not.
      *
-    function _tendTrigger() internal view override returns (bool) {}
-    */
+     */
+    function _tendTrigger() internal view override returns (bool) {
+        if (TokenizedStrategy.totalAssets() == 0) {
+            return false;
+        }
+
+        if (block.basefee >= maxTendBasefee) {
+            return false;
+        }
+
+        UserCooldown memory _cooldown = _cooldownStatus();
+
+        if (_cooldown.underlyingAmount != 0) {
+            return _cooldown.cooldownEnd <= block.timestamp;
+        }
+
+        if (TokenizedStrategy.isShutdown()) {
+            return false;
+        }
+
+        if (ERC20(SUSDE).balanceOf(address(this)) >= minCooldownAmount) {
+            return true;
+        }
+
+        return false;
+    }
 
     /**
      * @dev Optional function for a strategist to override that will
@@ -236,13 +290,96 @@ contract Strategy is BaseStrategy {
      *
      * @param _amount The amount of asset to attempt to free.
      *
+     */
     function _emergencyWithdraw(uint256 _amount) internal override {
-        TODO: If desired implement simple logic to free deployed funds.
-
-        EX:
-            _amount = min(_amount, aToken.balanceOf(address(this)));
-            _freeFunds(_amount);
+        // TODO: do we need to do more
+        _freeFunds(_amount);
     }
 
-    */
+    /**
+     * @notice Adjusts the strategy's position
+     */
+    function _adjustPosition() internal {
+        ISUSDe _susde = ISUSDe(SUSDE);
+
+        // Check if we can directly redeem
+        if (
+            _susde.cooldownDuration() == 0 &&
+            _susde.balanceOf(address(this)) != 0
+        ) {
+            _redeemSUSDe();
+        }
+
+        // Check if we have shares to unstake
+        UserCooldown memory _cooldown = _cooldownStatus();
+        if (
+            _cooldown.underlyingAmount != 0 &&
+            _cooldown.cooldownEnd <= block.timestamp
+        ) {
+            _unstakeSUSDe();
+            // zero the cooldown info
+            _cooldown.underlyingAmount = 0;
+            _cooldown.cooldownEnd = 0;
+        }
+
+        // Cooldown sUSDE if there is no funds being cooled down
+        if (
+            _cooldown.underlyingAmount == 0 &&
+            _susde.balanceOf(address(this)) >= minCooldownAmount
+        ) {
+            _cooldownSUSDe();
+        }
+
+        // 3. kick auction?
+    }
+
+    /**
+     * @notice Initiates cooldown of sUSDe
+     * @return . Amount of asset that will be released after cooldown
+     */
+    function _cooldownSUSDe() internal returns (uint256) {
+        ISUSDe _susde = ISUSDe(SUSDE);
+        uint256 sharesToCooldown = Math.min(
+            _susde.balanceOf(address(this)),
+            _susde.maxRedeem(address(this))
+        );
+        return _susde.cooldownShares(sharesToCooldown);
+    }
+
+    /**
+     * @notice Redeeems USDe from sUSDe stakingInitiates cooldown of
+     * @return . Amount of asset redeemed
+     */
+    function _redeemSUSDe() internal returns (uint256) {
+        ISUSDe _susde = ISUSDe(SUSDE);
+        uint256 sharesToRedeem = Math.min(
+            _susde.balanceOf(address(this)),
+            _susde.maxRedeem(address(this))
+        );
+        return _susde.redeem(sharesToRedeem, address(this), address(this));
+    }
+
+    /**
+     * @notice Unstakes cooldowned sUSDe
+     */
+    function _unstakeSUSDe() internal {
+        ISUSDe _susde = ISUSDe(SUSDE);
+        _susde.unstake(address(this));
+    }
+
+    /**
+     * @notice Returns this contract's loose asset
+     * @return . The asset loose in this contract
+     */
+    function _looseAsset() internal view returns (uint256) {
+        return asset.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Returns this contract's cooldown
+     * @return . The cooldown for this contract
+     */
+    function _cooldownStatus() internal view returns (UserCooldown memory) {
+        return ISUSDe(SUSDE).cooldowns(address(this));
+    }
 }
