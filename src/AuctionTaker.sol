@@ -6,8 +6,9 @@ import {ITaker} from "@periphery/interfaces/ITaker.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
 
-contract AuctionTaker is ReentrancyGuard, ITaker {
+contract AuctionTaker is ReentrancyGuard, Multicall, ITaker {
     using SafeERC20 for ERC20;
 
     constructor() {}
@@ -40,24 +41,26 @@ contract AuctionTaker is ReentrancyGuard, ITaker {
     }
 
     function auctionTakeCallback(
-        bytes32, /*_auctionId*/
+        bytes32 _auctionId,
         address _sender,
-        uint256, /*_amountTaken*/
+        uint256 _amountTaken,
         uint256 _amountNeeded,
         bytes calldata _data
     ) external nonReentrant {
         require(_sender == address(this));
 
+        (address _takeToken, address _giveToken, , ) = Auction(msg.sender)
+            .auctionInfo(_auctionId);
+        ERC20(_takeToken).safeApprove(msg.sender, _amountTaken);
+
         (address _target, bytes memory _calldata) = abi.decode(
             _data,
             (address, bytes)
         );
-
         (bool success, ) = address(_target).call(_calldata);
         require(success, "!success"); // dev: call failed
 
-        ERC20 _want = ERC20(Auction(msg.sender).want());
-        _want.safeApprove(msg.sender, _amountNeeded);
+        ERC20(_giveToken).safeApprove(msg.sender, _amountNeeded);
     }
 
     function sweep(address _token, uint256 _amount) external {

@@ -13,10 +13,12 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
 
     address private constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
-    ISUSDe private constant SUSDE = ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
+    ISUSDe private constant SUSDE =
+        ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
 
     uint64 public maxTendBasefee = 30e9; // 30 gwei
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
+    uint80 public minAuctionAmount = 1_000e18; // 1000 USDe
     uint16 public minSUSDeDiscountBps = 50; // 0.50%
     uint256 public depositLimit;
 
@@ -53,6 +55,17 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         onlyManagement
     {
         minCooldownAmount = _minCooldownAmount;
+    }
+
+    /**
+     * @notice Sets the min amount to be auctioned. Can only be called by management
+     * @param _minAuctionAmount The minimum amount of USDe to auction
+     */
+    function setMinAuctionAmount(uint80 _minAuctionAmount)
+        external
+        onlyManagement
+    {
+        minAuctionAmount = _minAuctionAmount;
     }
 
     /**
@@ -330,6 +343,9 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                      AuctionSwapper Overrides 
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @param _token Address of the token being auctioned off
+     */
     function _auctionKicked(address _token)
         internal
         virtual
@@ -338,7 +354,23 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     {
         require(_token == USDE); // dev: only sell usde
         _kicked = super._auctionKicked(_token);
-        //require(_kicked >= minAjnaToAuction); // dev: too little
+        require(_kicked >= minAuctionAmount); // dev: too little
+    }
+
+    /**
+     * @param . Address of the token being taken.
+     * @param _amountToTake Amount of `_token` needed.
+     * @param _amountToPay Amount of `want` that will be payed.
+     */
+    function _preTake(
+        address, /*_token*/
+        uint256 _amountToTake,
+        uint256 _amountToPay
+    ) internal virtual override {
+        uint256 _takeAmount = SUSDE.convertToShares(_amountToTake);
+        uint256 _discountBps = MAX_BPS -
+            ((_amountToPay * MAX_BPS) / _takeAmount);
+        require(_discountBps >= minSUSDeDiscountBps); // dev: below minDiscount
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -351,8 +383,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     function _adjustPosition() internal {
         // Check if we can directly redeem
         if (
-            SUSDE.cooldownDuration() == 0 &&
-            SUSDE.balanceOf(address(this)) != 0
+            SUSDE.cooldownDuration() == 0 && SUSDE.balanceOf(address(this)) != 0
         ) {
             _redeemSUSDe();
         }
