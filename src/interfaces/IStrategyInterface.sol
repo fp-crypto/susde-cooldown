@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
+import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.sol";
 
-interface IStrategyInterface is IStrategy {
-    function maxTendBasefee() external returns (uint64);
+interface IStrategyInterface is IBaseHealthCheck {
+    function auctionFactory() external view returns (address);
 
-    function minCooldownAmount() external returns (uint80);
+    function auction() external view returns (address);
 
-    function minSUSDeDiscountBps() external returns (uint16);
+    function maxTendBasefee() external view returns (uint64);
 
-    function depositLimit() external returns (uint256);
+    function minCooldownAmount() external view returns (uint80);
+
+    function minSUSDeDiscountBps() external view returns (uint16);
+
+    function depositLimit() external view returns (uint256);
+
+    function estimatedTotalAssets() external view returns (uint256);
+
+    function coolingUSDe() external view returns (uint256);
 
     /**
      * @notice Sets the deposit limit. Can only be called by management

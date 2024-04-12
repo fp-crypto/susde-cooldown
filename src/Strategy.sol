@@ -9,6 +9,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
+import "forge-std/console.sol"; // TODO: delete
+
 contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
 
@@ -27,7 +29,27 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     }
 
     /*//////////////////////////////////////////////////////////////
-                      Public Setters
+                      External Views
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Returns the amount of usde being cooldown
+     * @return . The cooldown amount in usde
+     */
+    function coolingUSDe() external view returns (uint256) {
+        return _coolingUSDe();
+    }
+
+    /**
+     * @notice Returns the amount of asset with expect to report
+     * @return . The amount of asset this strategy expects to report
+     */
+    function estimatedTotalAssets() external view returns (uint256) {
+        return _estimatedTotalAssets();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      External Setters
     //////////////////////////////////////////////////////////////*/
 
     /**
@@ -173,11 +195,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         returns (uint256 _totalAssets)
     {
         _adjustPosition();
-
-        _totalAssets = _looseAsset();
-        _totalAssets += SUSDE.convertToAssets(SUSDE.balanceOf(address(this)));
-        UserCooldown memory _cooldown = _cooldownStatus();
-        _totalAssets += _cooldown.underlyingAmount;
+        _totalAssets = _estimatedTotalAssets();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -219,6 +237,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         ) {
             _withdrawLimit += _cooldown.underlyingAmount;
         }
+        console.log("wl: %e", _withdrawLimit);
     }
 
     /**
@@ -353,24 +372,29 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         returns (uint256 _kicked)
     {
         require(_token == USDE); // dev: only sell usde
-        _kicked = super._auctionKicked(_token);
+        //_kicked = super._auctionKicked(_token);
+        _kicked = _looseAsset();
         require(_kicked >= minAuctionAmount); // dev: too little
     }
 
     /**
      * @param . Address of the token being taken.
-     * @param _amountToTake Amount of `_token` needed.
-     * @param _amountToPay Amount of `want` that will be payed.
+     * @param _usdeTakeAmount Amount of `_token` needed.
+     * @param _susdeReceiveAmount Amount of `want` that will be payed.
      */
     function _preTake(
         address, /*_token*/
-        uint256 _amountToTake,
-        uint256 _amountToPay
+        uint256 _usdeTakeAmount,
+        uint256 _susdeReceiveAmount
     ) internal virtual override {
-        uint256 _takeAmount = SUSDE.convertToShares(_amountToTake);
-        uint256 _discountBps = MAX_BPS -
-            ((_amountToPay * MAX_BPS) / _takeAmount);
-        require(_discountBps >= minSUSDeDiscountBps); // dev: below minDiscount
+        uint256 _receiveAmountInUSDe = SUSDE.convertToAssets(
+            _susdeReceiveAmount
+        );
+        uint256 _surplusBps = ((_receiveAmountInUSDe - _usdeTakeAmount) *
+            MAX_BPS) / _usdeTakeAmount;
+        console.log("surplus: %e", _surplusBps);
+        require(_surplusBps >= minSUSDeDiscountBps); // dev: below minDiscount
+        asset.transfer(address(auction), _usdeTakeAmount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -381,10 +405,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @notice Adjusts the strategy's position
      */
     function _adjustPosition() internal {
+        uint24 _cooldownDuration = SUSDE.cooldownDuration();
+
         // Check if we can directly redeem
-        if (
-            SUSDE.cooldownDuration() == 0 && SUSDE.balanceOf(address(this)) != 0
-        ) {
+        if (_cooldownDuration == 0 && _looseSUDe() != 0) {
             _redeemSUSDe();
         }
 
@@ -402,8 +426,9 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
 
         // Cooldown sUSDE if there is no funds being cooled down
         if (
+            _cooldownDuration != 0 &&
             _cooldown.underlyingAmount == 0 &&
-            SUSDE.balanceOf(address(this)) >= minCooldownAmount
+            _looseSUDe() >= minCooldownAmount
         ) {
             _cooldownSUSDe();
         }
@@ -417,7 +442,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      */
     function _cooldownSUSDe() internal returns (uint256) {
         uint256 sharesToCooldown = Math.min(
-            SUSDE.balanceOf(address(this)),
+            _looseSUDe(),
             SUSDE.maxRedeem(address(this))
         );
         return SUSDE.cooldownShares(sharesToCooldown);
@@ -429,7 +454,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      */
     function _redeemSUSDe() internal returns (uint256) {
         uint256 sharesToRedeem = Math.min(
-            SUSDE.balanceOf(address(this)),
+            _looseSUDe(),
             SUSDE.maxRedeem(address(this))
         );
         return SUSDE.redeem(sharesToRedeem, address(this), address(this));
@@ -452,6 +477,34 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      */
     function _looseAsset() internal view returns (uint256) {
         return asset.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Returns this contract's loose sUSDe
+     * @return . The sUSDe loose in this contract
+     */
+    function _looseSUDe() internal view returns (uint256) {
+        return SUSDE.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Returns the amount of usde being cooldown
+     * @return . The cooldown amount in usde
+     */
+    function _coolingUSDe() internal view returns (uint256) {
+        UserCooldown memory _cooldown = _cooldownStatus();
+        return _cooldown.underlyingAmount;
+    }
+
+    /**
+     * @notice Returns the amount of asset with expect to report
+     * @return . The amount of asset this strategy expects to report
+     */
+    function _estimatedTotalAssets() internal view returns (uint256) {
+        return
+            _looseAsset() +
+            _coolingUSDe() +
+            SUSDE.convertToAssets(_looseSUDe());
     }
 
     /**

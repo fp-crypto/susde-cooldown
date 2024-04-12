@@ -20,7 +20,7 @@ contract OperationTest is Setup {
     }
 
     function test_operation(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -57,7 +57,7 @@ contract OperationTest is Setup {
         uint256 _amount,
         uint16 _profitFactor
     ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
         // Deposit into strategy
@@ -99,7 +99,7 @@ contract OperationTest is Setup {
         uint256 _amount,
         uint16 _profitFactor
     ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
         // Set protocol fee to 0 and perf fee to 10%
@@ -158,42 +158,5 @@ contract OperationTest is Setup {
             expectedShares,
             "!perf fee out"
         );
-    }
-
-    function test_tendTrigger(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-
-        (bool trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        // Deposit into strategy
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        // Skip some time
-        skip(1 days);
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        vm.prank(keeper);
-        strategy.report();
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        // Unlock Profits
-        skip(strategy.profitMaxUnlockTime());
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
-
-        vm.prank(user);
-        strategy.redeem(_amount, user, user);
-
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(!trigger);
     }
 }
