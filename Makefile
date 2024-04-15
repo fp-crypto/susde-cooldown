@@ -19,6 +19,7 @@ test-contract-gas  :; forge test --gas-report --match-contract ${contract} --for
 trace-contract  :; forge test -vvv --match-contract $(contract) --fork-url ${FORK_URL}
 test-test  :; forge test -vv --match-test $(test) --fork-url ${FORK_URL}
 trace-test  :; forge test -vvv --match-test $(test) --fork-url ${FORK_URL}
+quiet-test  :; forge test --fork-url ${FORK_URL} --etherscan-api-key ${ETHERSCAN_API_KEY}
 snapshot :; forge snapshot -vv --fork-url ${FORK_URL}
 snapshot-diff :; forge snapshot --diff -vv --fork-url ${FORK_URL}
 
