@@ -7,6 +7,7 @@ import {ExtendedTest} from "./ExtendedTest.sol";
 import {Strategy, ERC20} from "../../Strategy.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 import {Auction, AuctionFactory} from "@periphery/Auctions/AuctionFactory.sol";
+import {ISUSDe} from "../../interfaces/ethena/ISUSDe.sol";
 
 // Inherit the events so they can be checked if desired.
 import {IEvents} from "@tokenized-strategy/interfaces/IEvents.sol";
@@ -23,6 +24,7 @@ contract Setup is ExtendedTest, IEvents {
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
+    ISUSDe susde;
 
     Auction public auction;
     bytes32 public auctionId;
@@ -54,6 +56,7 @@ contract Setup is ExtendedTest, IEvents {
 
         // Set asset
         asset = ERC20(tokenAddrs["USDE"]);
+        susde = ISUSDe(tokenAddrs["SUSDE"]);
 
         // Set decimals
         decimals = asset.decimals();

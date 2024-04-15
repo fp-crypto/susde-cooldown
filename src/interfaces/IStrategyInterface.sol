@@ -20,6 +20,8 @@ interface IStrategyInterface is IBaseHealthCheck {
 
     function coolingUSDe() external view returns (uint256);
 
+    function strategyProxyCount() external view returns (uint256);
+
     /**
      * @notice Sets the deposit limit. Can only be called by management
      * @param _depositLimit The deposit limit
@@ -49,4 +51,14 @@ interface IStrategyInterface is IBaseHealthCheck {
      * @param _auction The minimum auction contract address
      */
     function setAuction(address _auction) external;
+
+    function addStrategyProxy() external;
+
+    function recallFromProxy(
+        address _proxy,
+        address _token,
+        uint256 _amount
+    ) external;
+
+    function manualUnstakeSUSDe(address _proxy) external;
 }

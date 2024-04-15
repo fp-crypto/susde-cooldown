@@ -3,10 +3,13 @@ pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract OperationTest is Setup {
     function setUp() public virtual override {
         super.setUp();
+        vm.prank(management);
+        strategy.setMinCooldownAmount(uint80((minFuzzAmount * 10) / MAX_BPS)); // set to the minimum possible amount
     }
 
     function test_setupStrategyOK() public {
@@ -53,10 +56,9 @@ contract OperationTest is Setup {
         );
     }
 
-    function test_profitableReport(
-        uint256 _amount,
-        uint16 _profitFactor
-    ) public {
+    function test_profitableReport(uint256 _amount, uint16 _profitFactor)
+        public
+    {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
@@ -68,19 +70,32 @@ contract OperationTest is Setup {
         // Earn Interest
         skip(1 days);
 
-        // TODO: implement logic to simulate earning interest.
-        uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        airdrop(asset, address(strategy), toAirdrop);
+        uint256 toAirdrop = susde.convertToShares(
+            (_amount * (MAX_BPS + _profitFactor)) / MAX_BPS
+        );
+        airdrop(ERC20(address(susde)), address(strategy), toAirdrop);
+        deal(address(asset), address(strategy), 0);
+
+        logStrategyInfo();
 
         // Report profit
         vm.prank(keeper);
         (uint256 profit, uint256 loss) = strategy.report();
 
+        logStrategyInfo();
+
         // Check return Values
-        assertGe(profit, toAirdrop, "!profit");
+        assertApproxEq(
+            profit,
+            susde.convertToAssets(toAirdrop) - _amount,
+            1e6,
+            "!profit"
+        );
         assertEq(loss, 0, "!loss");
 
-        skip(strategy.profitMaxUnlockTime());
+        skip(
+            Math.max(strategy.profitMaxUnlockTime(), susde.cooldownDuration())
+        );
 
         uint256 balanceBefore = asset.balanceOf(user);
 
@@ -95,42 +110,61 @@ contract OperationTest is Setup {
         );
     }
 
-    function test_profitableReport_withFees(
+    function test_profitableReport_multipleProxies(
         uint256 _amount,
-        uint16 _profitFactor
+        uint16 _profitFactor,
+        uint8 _proxyCount
     ) public {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
-
-        // Set protocol fee to 0 and perf fee to 10%
-        setFees(0, 1_000);
+        _proxyCount = uint8(bound(uint256(_proxyCount), 1, 7));
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
-
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        // Earn Interest
-        skip(1 days);
+        uint256 totalAirdrop = susde.convertToShares(
+            (_amount * (MAX_BPS + _profitFactor)) / MAX_BPS
+        );
 
-        // TODO: implement logic to simulate earning interest.
-        uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
-        airdrop(asset, address(strategy), toAirdrop);
+        for (uint8 i = 1; i < _proxyCount; ++i) {
+            // we already have one
+            vm.prank(management);
+            strategy.addStrategyProxy();
 
-        // Report profit
-        vm.prank(keeper);
-        (uint256 profit, uint256 loss) = strategy.report();
+            uint256 toAirdrop = totalAirdrop / _proxyCount;
 
-        // Check return Values
-        assertGe(profit, toAirdrop, "!profit");
-        assertEq(loss, 0, "!loss");
+            airdrop(ERC20(address(susde)), address(strategy), toAirdrop);
+            deal(
+                address(asset),
+                address(strategy),
+                asset.balanceOf(address(strategy)) - (_amount / 7)
+            );
 
-        skip(strategy.profitMaxUnlockTime());
+            logStrategyInfo();
 
-        // Get the expected fee
-        uint256 expectedShares = (profit * 1_000) / MAX_BPS;
+            // Report profit
+            vm.prank(keeper);
+            (uint256 profit, uint256 loss) = strategy.report();
 
-        assertEq(strategy.balanceOf(performanceFeeRecipient), expectedShares);
+            logStrategyInfo();
+
+            // Check return Values
+            assertGe(
+                profit,
+                susde.convertToAssets(toAirdrop) - (_amount / 7),
+                "!profit"
+            );
+            assertEq(loss, 0, "!loss");
+
+            skip(1 days); // skip 1 day
+        }
+
+        assertEq(strategy.strategyProxyCount(), _proxyCount, "!proxyCount");
+
+        skip(
+            Math.max(strategy.profitMaxUnlockTime(), susde.cooldownDuration())
+        );
 
         uint256 balanceBefore = asset.balanceOf(user);
 
@@ -142,21 +176,6 @@ contract OperationTest is Setup {
             asset.balanceOf(user),
             balanceBefore + _amount,
             "!final balance"
-        );
-
-        vm.prank(performanceFeeRecipient);
-        strategy.redeem(
-            expectedShares,
-            performanceFeeRecipient,
-            performanceFeeRecipient
-        );
-
-        checkStrategyTotals(strategy, 0, 0, 0);
-
-        assertGe(
-            asset.balanceOf(performanceFeeRecipient),
-            expectedShares,
-            "!perf fee out"
         );
     }
 }

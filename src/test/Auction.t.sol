@@ -8,11 +8,9 @@ import {ISUSDe} from "../interfaces/ethena/ISUSDe.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract AuctionTest is Setup {
-    ISUSDe susde;
 
     function setUp() public virtual override {
         super.setUp();
-        susde = ISUSDe(tokenAddrs["SUSDE"]);
         setFees(0, 0);
         vm.prank(management);
         strategy.setMinCooldownAmount(500e18);

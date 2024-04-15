@@ -11,6 +11,8 @@ import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
 import {StrategyProxy} from "./StrategyProxy.sol";
 
+import "forge-std/console.sol"; // TODO: delete
+
 contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
 
@@ -48,6 +50,14 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      */
     function estimatedTotalAssets() external view returns (uint256) {
         return _estimatedTotalAssets();
+    }
+
+    /**
+     * @notice Returns the number of strategy proxies
+     * @return . The strategy proxy count
+     */
+    function strategyProxyCount() external view returns (uint256) {
+        return strategyProxies.length;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -114,9 +124,28 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         auction = _auction;
     }
 
+    /*//////////////////////////////////////////////////////////////
+                      External Actions
+    //////////////////////////////////////////////////////////////*/
+
     function addStrategyProxy() external onlyManagement {
         require(strategyProxies.length <= MAX_STRATEGY_PROXIES); // dev: max proxies
         strategyProxies.push(StrategyProxy(strategyProxies[0].clone()));
+    }
+
+    function recallFromProxy(
+        address _proxy,
+        address _token,
+        uint256 _amount
+    ) external onlyEmergencyAuthorized {
+        StrategyProxy(_proxy).recall(_token, _amount);
+    }
+
+    function manualUnstakeSUSDe(address _proxy)
+        external
+        onlyEmergencyAuthorized
+    {
+        StrategyProxy(_proxy).unstakeSUSDe();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -253,6 +282,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             UserCooldown memory _cooldown = _cooldownStatus(
                 address(_strategyProxy)
             );
+
             if (
                 _cooldown.underlyingAmount != 0 &&
                 _cooldown.cooldownEnd <= block.timestamp
@@ -326,7 +356,9 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @param . The current amount of idle funds that are available to deploy.
      *
      */
-    function _tend(uint256 /*_totalIdle*/) internal override {
+    function _tend(
+        uint256 /*_totalIdle*/
+    ) internal override {
         _adjustPosition();
     }
 
