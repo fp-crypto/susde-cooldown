@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {ERC20} from "@tokenized-strategy/BaseStrategy.sol";
 import {BaseHealthCheck} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
+import {ERC20} from "@tokenized-strategy/BaseStrategy.sol";
 import {Auction, AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
-import "forge-std/console.sol"; // TODO: delete
+import {StrategyProxy} from "./StrategyProxy.sol";
 
 contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
@@ -17,15 +17,17 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     address private constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
     ISUSDe private constant SUSDE =
         ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
+    uint8 private constant MAX_STRATEGY_PROXIES = 7;
 
     uint64 public maxTendBasefee = 30e9; // 30 gwei
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
     uint80 public minAuctionAmount = 1_000e18; // 1000 USDe
     uint16 public minSUSDeDiscountBps = 50; // 0.50%
     uint256 public depositLimit;
+    StrategyProxy[] public strategyProxies;
 
     constructor(string memory _name) BaseHealthCheck(USDE, _name) {
-        _enableAuction(USDE, address(SUSDE));
+        strategyProxies.push(new StrategyProxy(address(this)));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -112,6 +114,11 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         auction = _auction;
     }
 
+    function addStrategyProxy() external onlyManagement {
+        require(strategyProxies.length <= MAX_STRATEGY_PROXIES); // dev: max proxies
+        strategyProxies.push(StrategyProxy(strategyProxies[0].clone()));
+    }
+
     /*//////////////////////////////////////////////////////////////
                      BaseStrategy Overrides 
     //////////////////////////////////////////////////////////////*/
@@ -153,17 +160,27 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @param _amount, The amount of 'asset' to be freed.
      */
     function _freeFunds(uint256 _amount) internal override {
+        uint256 _amountFreed;
+
         // 1. we can check if any sUSDe with redeemable/withdrawable
         if (SUSDE.cooldownDuration() == 0) {
-            uint256 _amountRedeemed = _redeemSUSDe();
-            if (_amountRedeemed >= _amount) return;
+            _amountFreed = _redeemSUSDe(_looseSUSDe());
+            if (_amountFreed >= _amount) return;
         }
-        UserCooldown memory _cooldown = _cooldownStatus();
-        if (
-            _cooldown.underlyingAmount != 0 &&
-            _cooldown.cooldownEnd <= block.timestamp
-        ) {
-            _unstakeSUSDe();
+
+        for (uint8 i; i < strategyProxies.length; ++i) {
+            StrategyProxy _strategyProxy = strategyProxies[i];
+            UserCooldown memory _cooldown = _cooldownStatus(
+                address(_strategyProxy)
+            );
+            if (
+                _cooldown.underlyingAmount != 0 &&
+                _cooldown.cooldownEnd <= block.timestamp
+            ) {
+                _strategyProxy.unstakeSUSDe();
+                _amountFreed += _cooldown.underlyingAmount;
+                if (_amountFreed >= _amount) return;
+            }
         }
     }
 
@@ -230,14 +247,32 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                 SUSDE.balanceOf(address(this))
             );
         }
-        UserCooldown memory _cooldown = _cooldownStatus();
-        if (
-            _cooldown.underlyingAmount != 0 &&
-            _cooldown.cooldownEnd <= block.timestamp
-        ) {
-            _withdrawLimit += _cooldown.underlyingAmount;
+
+        for (uint8 i; i < strategyProxies.length; ++i) {
+            StrategyProxy _strategyProxy = strategyProxies[i];
+            UserCooldown memory _cooldown = _cooldownStatus(
+                address(_strategyProxy)
+            );
+            if (
+                _cooldown.underlyingAmount != 0 &&
+                _cooldown.cooldownEnd <= block.timestamp
+            ) {
+                _withdrawLimit += _cooldown.underlyingAmount;
+            }
         }
-        console.log("wl: %e", _withdrawLimit);
+
+        Auction _auction = Auction(auction);
+        if (address(_auction) != address(0)) {
+            bytes32 _auctionId = _auction.getAuctionId(address(asset));
+            (, , , uint256 _amountAvailableForAuction) = _auction.auctionInfo(
+                _auctionId
+            );
+            if (_withdrawLimit > _amountAvailableForAuction) {
+                _withdrawLimit -= _amountAvailableForAuction;
+            } else {
+                _withdrawLimit = 0;
+            }
+        }
     }
 
     /**
@@ -262,12 +297,9 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @return . The available amount the `_owner` can deposit in terms of `asset`
      *
      */
-    function availableDepositLimit(address _owner)
-        public
-        view
-        override
-        returns (uint256)
-    {
+    function availableDepositLimit(
+        address /*_owner*/
+    ) public view override returns (uint256) {
         uint256 _totalAssets = TokenizedStrategy.totalAssets();
         return _totalAssets >= depositLimit ? 0 : depositLimit - _totalAssets;
     }
@@ -291,10 +323,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      *
      * This will have no effect on PPS of the strategy till report() is called.
      *
-     * @param _totalIdle The current amount of idle funds that are available to deploy.
+     * @param . The current amount of idle funds that are available to deploy.
      *
      */
-    function _tend(uint256 _totalIdle) internal override {
+    function _tend(uint256 /*_totalIdle*/) internal override {
         _adjustPosition();
     }
 
@@ -314,10 +346,17 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             return false;
         }
 
-        UserCooldown memory _cooldown = _cooldownStatus();
-
-        if (_cooldown.underlyingAmount != 0) {
-            return _cooldown.cooldownEnd <= block.timestamp;
+        for (uint8 i; i < strategyProxies.length; ++i) {
+            StrategyProxy _strategyProxy = strategyProxies[i];
+            UserCooldown memory _cooldown = _cooldownStatus(
+                address(_strategyProxy)
+            );
+            if (
+                _cooldown.underlyingAmount != 0 &&
+                _cooldown.cooldownEnd <= block.timestamp
+            ) {
+                return true;
+            }
         }
 
         if (TokenizedStrategy.isShutdown()) {
@@ -392,7 +431,6 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         );
         uint256 _surplusBps = ((_receiveAmountInUSDe - _usdeTakeAmount) *
             MAX_BPS) / _usdeTakeAmount;
-        console.log("surplus: %e", _surplusBps);
         require(_surplusBps >= minSUSDeDiscountBps); // dev: below minDiscount
         asset.transfer(address(auction), _usdeTakeAmount);
     }
@@ -407,54 +445,67 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     function _adjustPosition() internal {
         uint24 _cooldownDuration = SUSDE.cooldownDuration();
 
+        uint256 _idleSUSDe = _looseSUSDe();
+
         // Check if we can directly redeem
-        if (_cooldownDuration == 0 && _looseSUDe() != 0) {
-            _redeemSUSDe();
+        if (_cooldownDuration == 0 && _idleSUSDe != 0) {
+            _redeemSUSDe(_looseSUSDe());
         }
 
-        // Check if we have shares to unstake
-        UserCooldown memory _cooldown = _cooldownStatus();
-        if (
-            _cooldown.underlyingAmount != 0 &&
-            _cooldown.cooldownEnd <= block.timestamp
-        ) {
-            _unstakeSUSDe();
-            // zero the cooldown info
-            _cooldown.underlyingAmount = 0;
-            _cooldown.cooldownEnd = 0;
-        }
+        _idleSUSDe = _looseSUSDe();
 
-        // Cooldown sUSDE if there is no funds being cooled down
-        if (
-            _cooldownDuration != 0 &&
-            _cooldown.underlyingAmount == 0 &&
-            _looseSUDe() >= minCooldownAmount
-        ) {
-            _cooldownSUSDe();
+        for (uint8 i; i < strategyProxies.length; ++i) {
+            StrategyProxy _strategyProxy = strategyProxies[i];
+            // Check if we have shares to unstake
+            UserCooldown memory _cooldown = _cooldownStatus(
+                address(_strategyProxy)
+            );
+            if (
+                _cooldown.underlyingAmount != 0 &&
+                _cooldown.cooldownEnd <= block.timestamp
+            ) {
+                _strategyProxy.unstakeSUSDe();
+                // zero the cooldown info
+                _cooldown.underlyingAmount = 0;
+                _cooldown.cooldownEnd = 0;
+            }
+
+            // Cooldown sUSDE if there is no funds being cooled down
+            if (
+                _idleSUSDe >= minCooldownAmount &&
+                _cooldownDuration != 0 &&
+                _cooldown.underlyingAmount == 0
+            ) {
+                _cooldownSUSDe(_strategyProxy, _idleSUSDe);
+                _idleSUSDe = 0;
+            }
         }
 
         // 3. kick auction?
     }
 
     /**
-     * @notice Initiates cooldown of sUSDe
+     * @notice Initiates cooldown of sUSDe using a strategy proxy
+     * @param _strategyProxy The strategy proxy to use
+     * @param _amount The maximum amount to try to cooldown
      * @return . Amount of asset that will be released after cooldown
      */
-    function _cooldownSUSDe() internal returns (uint256) {
-        uint256 sharesToCooldown = Math.min(
-            _looseSUDe(),
-            SUSDE.maxRedeem(address(this))
-        );
-        return SUSDE.cooldownShares(sharesToCooldown);
+    function _cooldownSUSDe(StrategyProxy _strategyProxy, uint256 _amount)
+        internal
+        returns (uint256)
+    {
+        ERC20(address(SUSDE)).safeTransfer(address(_strategyProxy), _amount);
+        return _strategyProxy.cooldownSUSDe();
     }
 
     /**
      * @notice Redeeems USDe from sUSDe stakingInitiates cooldown of
+     * @param _amount The maximum amount to try to redeem
      * @return . Amount of asset redeemed
      */
-    function _redeemSUSDe() internal returns (uint256) {
+    function _redeemSUSDe(uint256 _amount) internal returns (uint256) {
         uint256 sharesToRedeem = Math.min(
-            _looseSUDe(),
+            _amount,
             SUSDE.maxRedeem(address(this))
         );
         return SUSDE.redeem(sharesToRedeem, address(this), address(this));
@@ -483,17 +534,21 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @notice Returns this contract's loose sUSDe
      * @return . The sUSDe loose in this contract
      */
-    function _looseSUDe() internal view returns (uint256) {
+    function _looseSUSDe() internal view returns (uint256) {
         return SUSDE.balanceOf(address(this));
     }
 
     /**
      * @notice Returns the amount of usde being cooldown
-     * @return . The cooldown amount in usde
+     * @return _amountCooling The cooldown amount in usde
      */
-    function _coolingUSDe() internal view returns (uint256) {
-        UserCooldown memory _cooldown = _cooldownStatus();
-        return _cooldown.underlyingAmount;
+    function _coolingUSDe() internal view returns (uint256 _amountCooling) {
+        for (uint8 i = 0; i < strategyProxies.length; ++i) {
+            UserCooldown memory _cooldown = _cooldownStatus(
+                address(strategyProxies[i])
+            );
+            _amountCooling += _cooldown.underlyingAmount;
+        }
     }
 
     /**
@@ -504,14 +559,19 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         return
             _looseAsset() +
             _coolingUSDe() +
-            SUSDE.convertToAssets(_looseSUDe());
+            SUSDE.convertToAssets(_looseSUSDe());
     }
 
     /**
      * @notice Returns this contract's cooldown
+     * @param _owner The owner of the cooldown
      * @return . The cooldown for this contract
      */
-    function _cooldownStatus() internal view returns (UserCooldown memory) {
-        return SUSDE.cooldowns(address(this));
+    function _cooldownStatus(address _owner)
+        internal
+        view
+        returns (UserCooldown memory)
+    {
+        return SUSDE.cooldowns(_owner);
     }
 }
