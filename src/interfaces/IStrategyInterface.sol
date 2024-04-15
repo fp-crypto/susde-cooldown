@@ -20,6 +20,8 @@ interface IStrategyInterface is IBaseHealthCheck {
 
     function coolingUSDe() external view returns (uint256);
 
+    function strategyProxies(uint256 i) external view returns (address);
+
     function strategyProxyCount() external view returns (uint256);
 
     /**
@@ -61,4 +63,6 @@ interface IStrategyInterface is IBaseHealthCheck {
     ) external;
 
     function manualUnstakeSUSDe(address _proxy) external;
+
+    function manualCooldownSUSDe(address _proxy, uint256 _amount) external;
 }

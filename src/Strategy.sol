@@ -128,11 +128,32 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                       External Actions
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @notice Clone the strategy proxy and add it to the list of proxies
+     * Cannot create more than the MAX_STRATEGY_PROXIES value
+     */
     function addStrategyProxy() external onlyManagement {
         require(strategyProxies.length <= MAX_STRATEGY_PROXIES); // dev: max proxies
         strategyProxies.push(StrategyProxy(strategyProxies[0].clone()));
     }
 
+    /**
+     * @notice Recalls the ERC20 tokens from the specified proxy
+     * @param _proxy  The proxy to recall from
+     * @param _token  The token to recall
+     */
+    function recallFromProxy(address _proxy, address _token)
+        external
+        onlyEmergencyAuthorized
+    {
+        StrategyProxy(_proxy).recall(_token);
+    }
+    /**
+     * @notice Recalls the ERC20 tokens from the specified proxy
+     * @param _proxy  The proxy to recall from
+     * @param _token  The token to recall
+     * @param _amount The amount of token to recall
+     */
     function recallFromProxy(
         address _proxy,
         address _token,
@@ -141,11 +162,27 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         StrategyProxy(_proxy).recall(_token, _amount);
     }
 
+    /**
+     * @notice Manually unstakes susde
+     * @param _proxy  The proxy to use for cooling down
+     */
     function manualUnstakeSUSDe(address _proxy)
         external
         onlyEmergencyAuthorized
     {
-        StrategyProxy(_proxy).unstakeSUSDe();
+        _unstakeSUSDe(StrategyProxy(_proxy));
+    }
+
+    /**
+     * @notice Manually initiates cooldown of sUSDe using the provided proxy
+     * @param _proxy  The proxy to use for cooling down
+     * @param _amount The amount of sUSDe to cooldown
+     */
+    function manualCooldownSUSDe(address _proxy, uint256 _amount)
+        external
+        onlyEmergencyAuthorized
+    {
+        _cooldownSUSDe(StrategyProxy(_proxy), _amount);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -496,7 +533,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                 _cooldown.underlyingAmount != 0 &&
                 _cooldown.cooldownEnd <= block.timestamp
             ) {
-                _strategyProxy.unstakeSUSDe();
+                _unstakeSUSDe(_strategyProxy);
                 // zero the cooldown info
                 _cooldown.underlyingAmount = 0;
                 _cooldown.cooldownEnd = 0;
@@ -544,10 +581,11 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     }
 
     /**
-     * @notice Unstakes cooldowned sUSDe
+     * @notice Unstakes cooldowned sUSDe using the strategy proxy
+     * @param _strategyProxy The strategy proxy to use
      */
-    function _unstakeSUSDe() internal {
-        SUSDE.unstake(address(this));
+    function _unstakeSUSDe(StrategyProxy _strategyProxy) internal {
+        _strategyProxy.unstakeSUSDe();
     }
 
     /*//////////////////////////////////////////////////////////////

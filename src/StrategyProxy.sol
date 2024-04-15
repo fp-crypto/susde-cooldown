@@ -11,8 +11,11 @@ contract StrategyProxy is Governance {
 
     ISUSDe private constant SUSDE =
         ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
+    bool private original;
 
-    constructor(address _strategy) Governance(_strategy) {}
+    constructor(address _strategy) Governance(_strategy) {
+        original = true;
+    }
 
     function initialize(address _strategy) public {
         require(address(governance) == address(0), "!initiliazd");
@@ -38,14 +41,27 @@ contract StrategyProxy is Governance {
         SUSDE.unstake(governance);
     }
 
+    /**
+     * @notice Recalls the ERC20 tokens to goverance
+     * @param _token  The token to recall
+     */
     function recall(address _token) external onlyGovernance {
         _recall(_token, ERC20(_token).balanceOf(address(this)));
     }
 
+    /**
+     * @notice Recalls the ERC20 tokens to goverance
+     * @param _token  The token to recall
+     * @param _amount The amount to recall
+     */
     function recall(address _token, uint256 _amount) external onlyGovernance {
         _recall(_token, _amount);
     }
 
+
+    /**
+     * @notice Clones this StrategyProxy
+     */
     function clone() external returns (address _newStrategyProxy) {
         return _clone();
     }
@@ -85,9 +101,11 @@ contract StrategyProxy is Governance {
     event Cloned(address indexed clone);
 
     /**
-     * @notice Clones this StrategyProxy
+     * @notice Clones this StrategyProxy if it's the original
      */
     function _clone() internal returns (address _newStrategyProxy) {
+        require(original); // dev: not original
+
         // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
         bytes20 addressBytes = bytes20(address(this));
 
