@@ -19,7 +19,6 @@ contract ManualFunctionsTest is Setup {
         assertEq(strategy.management(), management);
         assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
         assertEq(strategy.keeper(), keeper);
-        // TODO: add additional check on strat params
     }
 
     function test_manualUnstake(uint256 _amount, uint16 _profitFactor) public {
@@ -131,14 +130,100 @@ contract ManualFunctionsTest is Setup {
         logStrategyInfo();
 
         assertEq(asset.balanceOf(address(strategy)), 0);
-        assertEq(
-            susde.balanceOf(address(strategy)), 0
-        );
+        assertEq(susde.balanceOf(address(strategy)), 0);
         assertEq(strategy.coolingUSDe(), susde.convertToAssets(cooldownAmount));
 
         skip(
             Math.max(strategy.profitMaxUnlockTime(), susde.cooldownDuration())
         );
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        // Withdraw all funds
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
+
+        assertGe(
+            asset.balanceOf(user),
+            balanceBefore + _amount,
+            "!final balance"
+        );
+    }
+
+    function test_recallAmount(uint256 _amount, uint256 _recallAmount) public {
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+        _recallAmount = bound(_recallAmount, minFuzzAmount, maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        logStrategyInfo();
+
+        assertEq(asset.balanceOf(address(strategy)), _amount);
+        assertEq(susde.balanceOf(address(strategy)), 0);
+        assertEq(strategy.coolingUSDe(), 0);
+
+        address strategyProxy = strategy.strategyProxies(0);
+
+        airdrop(asset, strategyProxy, _recallAmount);
+
+        vm.expectRevert("!emergency authorized");
+        strategy.recallFromProxy(strategyProxy, address(asset), _recallAmount);
+
+        vm.prank(management);
+        strategy.recallFromProxy(strategyProxy, address(asset), _recallAmount);
+
+        logStrategyInfo();
+
+        assertEq(asset.balanceOf(address(strategy)), _amount + _recallAmount);
+        assertEq(susde.balanceOf(address(strategy)), 0);
+        assertEq(strategy.coolingUSDe(), 0);
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        // Withdraw all funds
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
+
+        assertGe(
+            asset.balanceOf(user),
+            balanceBefore + _amount,
+            "!final balance"
+        );
+    }
+
+    function test_recall(uint256 _amount, uint256 _recallAmount) public {
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+        _recallAmount = bound(_recallAmount, minFuzzAmount, maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        logStrategyInfo();
+
+        assertEq(asset.balanceOf(address(strategy)), _amount);
+        assertEq(susde.balanceOf(address(strategy)), 0);
+        assertEq(strategy.coolingUSDe(), 0);
+
+        address strategyProxy = strategy.strategyProxies(0);
+
+        airdrop(asset, strategyProxy, _recallAmount);
+
+        vm.expectRevert("!emergency authorized");
+        strategy.recallFromProxy(strategyProxy, address(asset));
+
+        vm.prank(management);
+        strategy.recallFromProxy(strategyProxy, address(asset));
+
+        logStrategyInfo();
+
+        assertEq(asset.balanceOf(address(strategy)), _amount + _recallAmount);
+        assertEq(susde.balanceOf(address(strategy)), 0);
+        assertEq(strategy.coolingUSDe(), 0);
 
         uint256 balanceBefore = asset.balanceOf(user);
 

@@ -56,6 +56,8 @@ interface IStrategyInterface is IBaseHealthCheck {
 
     function addStrategyProxy() external;
 
+    function recallFromProxy(address _proxy, address _token) external;
+
     function recallFromProxy(
         address _proxy,
         address _token,
