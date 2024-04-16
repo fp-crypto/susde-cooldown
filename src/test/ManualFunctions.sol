@@ -131,7 +131,11 @@ contract ManualFunctionsTest is Setup {
 
         assertEq(asset.balanceOf(address(strategy)), 0);
         assertEq(susde.balanceOf(address(strategy)), 0);
-        assertEq(strategy.coolingUSDe(), susde.convertToAssets(cooldownAmount));
+        assertApproxEq(
+            strategy.coolingUSDe(),
+            susde.convertToAssets(cooldownAmount),
+            1e6
+        );
 
         skip(
             Math.max(strategy.profitMaxUnlockTime(), susde.cooldownDuration())

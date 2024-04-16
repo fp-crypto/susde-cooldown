@@ -19,7 +19,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     address private constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
     ISUSDe private constant SUSDE =
         ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
-    uint8 private constant MAX_STRATEGY_PROXIES = 7;
+    uint256 public constant MAX_STRATEGY_PROXIES = 7;
 
     uint64 public maxTendBasefee = 30e9; // 30 gwei
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
@@ -133,7 +133,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * Cannot create more than the MAX_STRATEGY_PROXIES value
      */
     function addStrategyProxy() external onlyManagement {
-        require(strategyProxies.length <= MAX_STRATEGY_PROXIES); // dev: max proxies
+        require(strategyProxies.length < MAX_STRATEGY_PROXIES); // dev: max proxies
         strategyProxies.push(StrategyProxy(strategyProxies[0].clone()));
     }
 
@@ -148,6 +148,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     {
         StrategyProxy(_proxy).recall(_token);
     }
+
     /**
      * @notice Recalls the ERC20 tokens from the specified proxy
      * @param _proxy  The proxy to recall from
@@ -314,19 +315,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             );
         }
 
-        for (uint8 i; i < strategyProxies.length; ++i) {
-            StrategyProxy _strategyProxy = strategyProxies[i];
-            UserCooldown memory _cooldown = _cooldownStatus(
-                address(_strategyProxy)
-            );
-
-            if (
-                _cooldown.underlyingAmount != 0 &&
-                _cooldown.cooldownEnd <= block.timestamp
-            ) {
-                _withdrawLimit += _cooldown.underlyingAmount;
-            }
-        }
+        _withdrawLimit += _cooledUSDe();
 
         Auction _auction = Auction(auction);
         if (address(_auction) != address(0)) {
@@ -480,8 +469,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         returns (uint256 _kicked)
     {
         require(_token == USDE); // dev: only sell usde
-        //_kicked = super._auctionKicked(_token);
-        _kicked = _looseAsset();
+        _kicked = _looseAsset() + _cooledUSDe();
         require(_kicked >= minAuctionAmount); // dev: too little
     }
 
@@ -501,6 +489,13 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         uint256 _surplusBps = ((_receiveAmountInUSDe - _usdeTakeAmount) *
             MAX_BPS) / _usdeTakeAmount;
         require(_surplusBps >= minSUSDeDiscountBps); // dev: below minDiscount
+
+        // free funds if required
+        uint256 _idleUSDe = _looseAsset();
+        if (_usdeTakeAmount > _idleUSDe) {
+            _freeFunds(_usdeTakeAmount - _idleUSDe);
+        }
+
         asset.transfer(address(auction), _usdeTakeAmount);
     }
 
@@ -618,6 +613,24 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                 address(strategyProxies[i])
             );
             _amountCooling += _cooldown.underlyingAmount;
+        }
+    }
+
+    /**
+     * @notice Returns the amount of usde the is fully cooled but needs to be unstaked
+     * @return _amountCooled The cooled USDe waiting to be unstaked
+     */
+    function _cooledUSDe() internal view returns (uint256 _amountCooled) {
+        for (uint8 i = 0; i < strategyProxies.length; ++i) {
+            UserCooldown memory _cooldown = _cooldownStatus(
+                address(strategyProxies[i])
+            );
+            if (
+                _cooldown.underlyingAmount != 0 &&
+                _cooldown.cooldownEnd <= block.timestamp
+            ) {
+                _amountCooled += _cooldown.underlyingAmount;
+            }
         }
     }
 

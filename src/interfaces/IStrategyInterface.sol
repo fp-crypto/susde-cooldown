@@ -4,6 +4,8 @@ pragma solidity ^0.8.18;
 import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.sol";
 
 interface IStrategyInterface is IBaseHealthCheck {
+    function MAX_STRATEGY_PROXIES() external view returns (uint256);
+
     function auctionFactory() external view returns (address);
 
     function auction() external view returns (address);

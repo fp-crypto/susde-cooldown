@@ -8,7 +8,6 @@ import {ISUSDe} from "../interfaces/ethena/ISUSDe.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 contract AuctionTest is Setup {
-
     function setUp() public virtual override {
         super.setUp();
         setFees(0, 0);
@@ -24,7 +23,8 @@ contract AuctionTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        auction.kick(auctionId);
+        uint256 kickedAmount = auction.kick(auctionId);
+        assertEq(kickedAmount, _amount, "!kickedAmount");
 
         (, , address receiver, , uint128 takeAvailable) = auction.auctions(
             auctionId
@@ -130,7 +130,8 @@ contract AuctionTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        auction.kick(auctionId);
+        uint256 kickedAmount = auction.kick(auctionId);
+        assertEq(kickedAmount, _amount, "!kickedAmount");
 
         (, , address receiver, , uint128 takeAvailable) = auction.auctions(
             auctionId
@@ -231,7 +232,8 @@ contract AuctionTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        auction.kick(auctionId);
+        uint256 kickedAmount = auction.kick(auctionId);
+        assertEq(kickedAmount, _amount, "!kickedAmount");
 
         (, , address receiver, , uint128 takeAvailable) = auction.auctions(
             auctionId
@@ -312,14 +314,119 @@ contract AuctionTest is Setup {
 
         // Withdraw all funds
         vm.startPrank(user);
-        strategy.redeem(
-            _amount,
-            user,
-            user
-        );
+        strategy.redeem(_amount, user, user);
         vm.stopPrank();
 
         assertGe(
+            asset.balanceOf(user),
+            balanceBefore + _amount,
+            "!final balance"
+        );
+        logStrategyInfo();
+    }
+
+    function test_auction_withCompletedCooldown(uint256 _amount) public {
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        uint256 toAirdrop = susde.convertToShares(
+            (_amount * (MAX_BPS + strategy.minSUSDeDiscountBps())) / MAX_BPS
+        );
+        airdrop(ERC20(address(susde)), address(strategy), toAirdrop);
+        deal(address(asset), address(strategy), 0);
+
+        vm.prank(keeper);
+        strategy.tend();
+        assertGt(strategy.coolingUSDe(), 0);
+
+        skip(susde.cooldownDuration());
+
+        logStrategyInfo();
+
+        uint256 kickedAmount = auction.kick(auctionId);
+        assertGt(kickedAmount, _amount, "!kickedAmount");
+        assertEq(asset.balanceOf(address(strategy)), 0);
+
+        (, , address receiver, , uint128 takeAvailable) = auction.auctions(
+            auctionId
+        );
+
+        assertEq(receiver, address(strategy));
+
+        uint256 steps = 7_200;
+        uint256 skipBps = 0; //2500;
+
+        skip((auction.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
+        for (uint256 i = 0; i < steps; ++i) {
+            address buyer = address(62735);
+            uint256 amountNeeded = auction.getAmountNeeded(
+                auctionId,
+                takeAvailable
+            );
+            uint256 rate = (amountNeeded * 1e18) / uint256(takeAvailable);
+
+            int256 surplusBps = ((int256(susde.convertToAssets(amountNeeded)) -
+                int256(uint256(takeAvailable))) * 1e4) /
+                int256(uint256(takeAvailable));
+
+            if (surplusBps < 0) break;
+
+            if (
+                surplusBps <= 200 &&
+                surplusBps > int256(uint256(strategy.minSUSDeDiscountBps()))
+            ) {
+                airdrop(ERC20(address(susde)), buyer, amountNeeded);
+                vm.prank(buyer);
+                susde.approve(address(auction), amountNeeded);
+
+                // take the auction
+                vm.prank(buyer);
+                auction.take(auctionId);
+                break;
+            }
+
+            skip(((auction.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
+        }
+
+        logStrategyInfo();
+        assertEq(asset.balanceOf(address(strategy)), 0);
+        assertGt(
+            susde.convertToAssets(susde.balanceOf(address(strategy))),
+            strategy.totalAssets()
+        );
+        assertEq(strategy.coolingUSDe(), 0);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        // Report profit
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        logStrategyInfo();
+        assertEq(asset.balanceOf(address(strategy)), 0);
+        assertEq(susde.convertToAssets(susde.balanceOf(address(strategy))), 0);
+        assertEq(strategy.coolingUSDe(), strategy.totalAssets());
+
+        // Check return Values
+        assertGe(profit, 0, "!profit");
+        assertEq(loss, 0, "!loss");
+
+        skip(
+            Math.max(strategy.profitMaxUnlockTime(), susde.cooldownDuration())
+        );
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        // Withdraw all funds
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
+
+        assertGt(
             asset.balanceOf(user),
             balanceBefore + _amount,
             "!final balance"

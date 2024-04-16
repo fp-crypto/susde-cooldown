@@ -39,6 +39,8 @@ interface IStakedUSDe {
     ) external;
 
     function getUnvestedAmount() external view returns (uint256);
+
+    function owner() external view returns (address);
 }
 
 struct UserCooldown {
