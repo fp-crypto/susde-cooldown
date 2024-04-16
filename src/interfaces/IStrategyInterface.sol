@@ -69,4 +69,6 @@ interface IStrategyInterface is IBaseHealthCheck {
     function manualUnstakeSUSDe(address _proxy) external;
 
     function manualCooldownSUSDe(address _proxy, uint256 _amount) external;
+
+    function sweep(address _token) external;
 }

@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import "forge-std/console.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {StrategyProxy} from "../StrategyProxy.sol";
 
 contract ManualFunctionsTest is Setup {
     function setUp() public virtual override {
@@ -124,8 +125,14 @@ contract ManualFunctionsTest is Setup {
         vm.expectRevert("!emergency authorized");
         strategy.manualCooldownSUSDe(strategyProxy, cooldownAmount);
 
-        vm.prank(management);
+        address strategyProxyClone = StrategyProxy(strategy.strategyProxies(0))
+            .clone();
+        vm.startPrank(management);
+        vm.expectRevert();
+        strategy.manualCooldownSUSDe(strategyProxyClone, cooldownAmount);
+
         strategy.manualCooldownSUSDe(strategyProxy, cooldownAmount);
+        vm.stopPrank();
 
         logStrategyInfo();
 
@@ -228,6 +235,65 @@ contract ManualFunctionsTest is Setup {
         assertEq(asset.balanceOf(address(strategy)), _amount + _recallAmount);
         assertEq(susde.balanceOf(address(strategy)), 0);
         assertEq(strategy.coolingUSDe(), 0);
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        // Withdraw all funds
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
+
+        assertGe(
+            asset.balanceOf(user),
+            balanceBefore + _amount,
+            "!final balance"
+        );
+    }
+
+    function test_sweep(uint256 _amount) public {
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        logStrategyInfo();
+        assertEq(asset.balanceOf(address(strategy)), _amount);
+        assertEq(susde.balanceOf(address(strategy)), 0);
+
+        vm.startPrank(management);
+        vm.expectRevert("!asset");
+        strategy.sweep(address(asset));
+        vm.stopPrank();
+
+        airdrop(ERC20(address(susde)), address(strategy), _amount);
+
+        assertEq(asset.balanceOf(address(strategy)), _amount);
+        assertEq(susde.balanceOf(address(strategy)), _amount);
+
+        vm.startPrank(management);
+        vm.expectRevert("!susde");
+        strategy.sweep(address(susde));
+        vm.stopPrank();
+
+        ERC20 token = ERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
+        airdrop(token, address(strategy), _amount);
+
+        assertEq(token.balanceOf(address(strategy)), _amount);
+
+        vm.expectRevert("!management");
+        strategy.sweep(address(token));
+
+        uint256 managementBalanceBefore = token.balanceOf(management);
+
+        vm.startPrank(management);
+        strategy.sweep(address(token));
+        vm.stopPrank();
+
+        assertEq(token.balanceOf(management), managementBalanceBefore + _amount);
+        assertEq(asset.balanceOf(address(strategy)), _amount);
+        assertEq(susde.balanceOf(address(strategy)), _amount);
+        assertEq(token.balanceOf(address(strategy)), 0);
 
         uint256 balanceBefore = asset.balanceOf(user);
 

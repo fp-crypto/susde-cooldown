@@ -183,7 +183,28 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         external
         onlyEmergencyAuthorized
     {
+        bool _proxyValid;
+        for (uint8 i; i < strategyProxies.length; ++i) {
+            if (address(strategyProxies[i]) == _proxy) {
+                _proxyValid = true;
+                break;
+            }
+        }
+        require(_proxyValid); // dev: proxy must be in strategyProxies list
         _cooldownSUSDe(StrategyProxy(_proxy), _amount);
+    }
+
+    /**
+     * @notice Sweeps the specified token and sends it to the management address
+     * @param _token  The token to sweep
+     */
+    function sweep(address _token) external onlyManagement {
+        require(_token != address(asset), "!asset"); // dev: cannot sweep asset
+        require(_token != address(SUSDE), "!susde"); // dev: cannot sweep susde
+        ERC20(_token).safeTransfer(
+            TokenizedStrategy.management(),
+            ERC20(_token).balanceOf(address(this))
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -451,7 +472,6 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      *
      */
     function _emergencyWithdraw(uint256 _amount) internal override {
-        // TODO: do we need to do more
         _freeFunds(_amount);
     }
 
@@ -558,8 +578,19 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         internal
         returns (uint256)
     {
-        ERC20(address(SUSDE)).safeTransfer(address(_strategyProxy), _amount);
+        ERC20(address(SUSDE)).safeTransfer(
+            address(_strategyProxy),
+            Math.min(_amount, susde.maxRedeem(address(_strategyProxy)))
+        );
         return _strategyProxy.cooldownSUSDe();
+    }
+
+    /**
+     * @notice Unstakes cooldowned sUSDe using the strategy proxy
+     * @param _strategyProxy The strategy proxy to use
+     */
+    function _unstakeSUSDe(StrategyProxy _strategyProxy) internal {
+        _strategyProxy.unstakeSUSDe();
     }
 
     /**
@@ -573,14 +604,6 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             SUSDE.maxRedeem(address(this))
         );
         return SUSDE.redeem(sharesToRedeem, address(this), address(this));
-    }
-
-    /**
-     * @notice Unstakes cooldowned sUSDe using the strategy proxy
-     * @param _strategyProxy The strategy proxy to use
-     */
-    function _unstakeSUSDe(StrategyProxy _strategyProxy) internal {
-        _strategyProxy.unstakeSUSDe();
     }
 
     /*//////////////////////////////////////////////////////////////
