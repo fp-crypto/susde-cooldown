@@ -580,7 +580,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     {
         ERC20(address(SUSDE)).safeTransfer(
             address(_strategyProxy),
-            Math.min(_amount, SUSDE.maxRedeem(address(_strategyProxy)))
+            Math.min(_amount, SUSDE.maxRedeem(address(this)))
         );
         return _strategyProxy.cooldownSUSDe();
     }
