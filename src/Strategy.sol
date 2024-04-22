@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {BaseHealthCheck} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
-import {ERC20} from "@tokenized-strategy/BaseStrategy.sol";
-import {Auction, AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
-
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
+import {Auction, AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
+import {BaseHealthCheck} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
+
+import {ERC20} from "@tokenized-strategy/BaseStrategy.sol";
+
+import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 import {StrategyProxy} from "./StrategyProxy.sol";
 
-import "forge-std/console.sol"; // TODO: delete
 
 contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
@@ -184,10 +184,14 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         onlyEmergencyAuthorized
     {
         bool _proxyValid;
-        for (uint8 i; i < strategyProxies.length; ++i) {
+        for (uint8 i; i < strategyProxies.length; ) {
             if (address(strategyProxies[i]) == _proxy) {
                 _proxyValid = true;
                 break;
+            }
+
+            unchecked {
+              ++i;
             }
         }
         require(_proxyValid); // dev: proxy must be in strategyProxies list
@@ -256,7 +260,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             if (_amountFreed >= _amount) return;
         }
 
-        for (uint8 i; i < strategyProxies.length; ++i) {
+        for (uint8 i; i < strategyProxies.length; ) {
             StrategyProxy _strategyProxy = strategyProxies[i];
             UserCooldown memory _cooldown = _cooldownStatus(
                 address(_strategyProxy)
@@ -268,6 +272,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                 _strategyProxy.unstakeSUSDe();
                 _amountFreed += _cooldown.underlyingAmount;
                 if (_amountFreed >= _amount) return;
+            }
+
+            unchecked {
+              ++i;
             }
         }
     }
@@ -538,7 +546,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
 
         _idleSUSDe = _looseSUSDe();
 
-        for (uint8 i; i < strategyProxies.length; ++i) {
+        for (uint8 i; i < strategyProxies.length; ) {
             StrategyProxy _strategyProxy = strategyProxies[i];
             // Check if we have shares to unstake
             UserCooldown memory _cooldown = _cooldownStatus(
@@ -562,6 +570,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             ) {
                 _cooldownSUSDe(_strategyProxy, _idleSUSDe);
                 _idleSUSDe = 0;
+            }
+
+            unchecked {
+              ++i;
             }
         }
 
@@ -644,7 +656,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
      * @return _amountCooled The cooled USDe waiting to be unstaked
      */
     function _cooledUSDe() internal view returns (uint256 _amountCooled) {
-        for (uint8 i = 0; i < strategyProxies.length; ++i) {
+        for (uint8 i = 0; i < strategyProxies.length; ) {
             UserCooldown memory _cooldown = _cooldownStatus(
                 address(strategyProxies[i])
             );
@@ -653,6 +665,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
                 _cooldown.cooldownEnd <= block.timestamp
             ) {
                 _amountCooled += _cooldown.underlyingAmount;
+            }
+
+            unchecked {
+              ++i;
             }
         }
     }
