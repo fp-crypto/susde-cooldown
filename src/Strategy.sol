@@ -184,10 +184,14 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         onlyEmergencyAuthorized
     {
         bool _proxyValid;
-        for (uint8 i; i < strategyProxies.length; ++i) {
+        for (uint8 i; i < strategyProxies.length; ) {
             if (address(strategyProxies[i]) == _proxy) {
                 _proxyValid = true;
                 break;
+            }
+
+            unchecked {
+              ++i;
             }
         }
         require(_proxyValid); // dev: proxy must be in strategyProxies list
@@ -542,7 +546,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
 
         _idleSUSDe = _looseSUSDe();
 
-        for (uint8 i; i < strategyProxies.length; ++i) {
+        for (uint8 i; i < strategyProxies.length; ) {
             StrategyProxy _strategyProxy = strategyProxies[i];
             // Check if we have shares to unstake
             UserCooldown memory _cooldown = _cooldownStatus(
@@ -566,6 +570,10 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             ) {
                 _cooldownSUSDe(_strategyProxy, _idleSUSDe);
                 _idleSUSDe = 0;
+            }
+
+            unchecked {
+              ++i;
             }
         }
 
