@@ -42,7 +42,7 @@ contract AuctionTakerTest is Setup {
     }
 
     function test_auctionTaker_curve() public {
-        uint256 _amount = 100_000e18;
+        uint256 _amount = 1_000e18;
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);

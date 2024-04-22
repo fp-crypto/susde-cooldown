@@ -35,12 +35,12 @@ contract TendTriggerTest is Setup {
         assertTrue(trigger);
 
         // False due to fee too high
-        vm.fee(strategy.maxTendBasefee() + 1);
+        vm.fee(strategy.maxTendBasefeeGwei() * 1e9 + 1);
         (trigger, ) = strategy.tendTrigger();
         assertTrue(!trigger);
 
         // True due to fee below max
-        vm.fee(strategy.maxTendBasefee() - 1);
+        vm.fee(strategy.maxTendBasefeeGwei() * 1e9 - 1);
         (trigger, ) = strategy.tendTrigger();
         assertTrue(trigger);
 

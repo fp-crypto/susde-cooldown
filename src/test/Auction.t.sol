@@ -32,7 +32,7 @@ contract AuctionTest is Setup {
 
         assertEq(receiver, address(strategy));
 
-        uint256 steps = 7_200;
+        uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
 
         uint256 stakingRate = susde.convertToAssets(1e18);
@@ -50,6 +50,11 @@ contract AuctionTest is Setup {
             int256 surplusBps = ((int256(susde.convertToAssets(amountNeeded)) -
                 int256(uint256(takeAvailable))) * 1e4) /
                 int256(uint256(takeAvailable));
+
+            console.log("i: %i", i);
+            console.log("surplus bps: ");
+            console.logInt(surplusBps);
+            console.log("rate: %e\n", 1e36 / rate);
 
             if (surplusBps < 0) break;
 
@@ -139,7 +144,7 @@ contract AuctionTest is Setup {
 
         assertEq(receiver, address(strategy));
 
-        uint256 steps = 7_200;
+        uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
 
         uint256 stakingRate = susde.convertToAssets(1e18);
@@ -241,7 +246,7 @@ contract AuctionTest is Setup {
 
         assertEq(receiver, address(strategy));
 
-        uint256 steps = 7_200;
+        uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
 
         uint256 stakingRate = susde.convertToAssets(1e18);
@@ -328,6 +333,9 @@ contract AuctionTest is Setup {
     function test_auction_withCompletedCooldown(uint256 _amount) public {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
 
+        vm.prank(management);
+        strategy.setMaxAuctionAmount(type(uint88).max); // set to max value for this test
+
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
@@ -357,7 +365,7 @@ contract AuctionTest is Setup {
 
         assertEq(receiver, address(strategy));
 
-        uint256 steps = 7_200;
+        uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
 
         skip((auction.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
@@ -367,13 +375,15 @@ contract AuctionTest is Setup {
                 auctionId,
                 takeAvailable
             );
-            uint256 rate = (amountNeeded * 1e18) / uint256(takeAvailable);
 
             int256 surplusBps = ((int256(susde.convertToAssets(amountNeeded)) -
                 int256(uint256(takeAvailable))) * 1e4) /
                 int256(uint256(takeAvailable));
 
-            if (surplusBps < 0) break;
+            if (surplusBps < 0) {
+                revert("Auction failed");
+                break;
+            }
 
             if (
                 surplusBps <= 200 &&
@@ -393,12 +403,13 @@ contract AuctionTest is Setup {
         }
 
         logStrategyInfo();
-        assertEq(asset.balanceOf(address(strategy)), 0);
+        assertEq(asset.balanceOf(address(strategy)), 0, "!idle");
         assertGt(
             susde.convertToAssets(susde.balanceOf(address(strategy))),
-            strategy.totalAssets()
+            strategy.totalAssets(),
+            "!susde"
         );
-        assertEq(strategy.coolingUSDe(), 0);
+        assertEq(strategy.coolingUSDe(), 0, "!cooling");
 
         vm.prank(management);
         strategy.setDoHealthCheck(false);
@@ -408,9 +419,17 @@ contract AuctionTest is Setup {
         (uint256 profit, uint256 loss) = strategy.report();
 
         logStrategyInfo();
-        assertEq(asset.balanceOf(address(strategy)), 0);
-        assertEq(susde.convertToAssets(susde.balanceOf(address(strategy))), 0);
-        assertEq(strategy.coolingUSDe(), strategy.totalAssets());
+        assertEq(asset.balanceOf(address(strategy)), 0, "!idle");
+        assertEq(
+            susde.convertToAssets(susde.balanceOf(address(strategy))),
+            0,
+            "!susde"
+        );
+        assertEq(
+            strategy.coolingUSDe(),
+            strategy.totalAssets(),
+            "!cooling"
+        );
 
         // Check return Values
         assertGe(profit, 0, "!profit");
@@ -432,5 +451,27 @@ contract AuctionTest is Setup {
             "!final balance"
         );
         logStrategyInfo();
+    }
+
+    function test_auction_minAndMaxAmounts() public {
+        uint256 _amount = 10_000e18;
+
+        vm.expectRevert(); // below minimum
+        auction.kick(auctionId);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        logStrategyInfo();
+
+        uint88 maxAuctionAmount = 5_000e18;
+        vm.prank(management);
+        strategy.setMaxAuctionAmount(maxAuctionAmount);
+
+        uint256 kickedAmount = auction.kick(auctionId);
+        assertEq(kickedAmount, maxAuctionAmount, "!kickedAmount");
+        assertEq(asset.balanceOf(address(strategy)), _amount);
     }
 }

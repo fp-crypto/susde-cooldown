@@ -6,9 +6,8 @@ import {ITaker} from "@periphery/interfaces/ITaker.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
 
-contract AuctionTaker is ReentrancyGuard, Multicall, ITaker {
+contract AuctionTaker is ReentrancyGuard, ITaker {
     using SafeERC20 for ERC20;
 
     constructor() {}
@@ -51,12 +50,13 @@ contract AuctionTaker is ReentrancyGuard, Multicall, ITaker {
 
         (address _takeToken, address _giveToken, , ) = Auction(msg.sender)
             .auctionInfo(_auctionId);
-        ERC20(_takeToken).safeApprove(msg.sender, _amountTaken);
 
         (address _target, bytes memory _calldata) = abi.decode(
             _data,
             (address, bytes)
         );
+
+        ERC20(_takeToken).safeApprove(_target, _amountTaken);
         (bool success, ) = address(_target).call(_calldata);
         require(success, "!success"); // dev: call failed
 

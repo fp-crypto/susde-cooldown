@@ -6,10 +6,10 @@ solc = "0.8.20"
 evm_version = "shanghai"
 
 remappings = [
-    "@openzeppelin/=lib/openzeppelin-contracts/",
     "forge-std/=lib/forge-std/src/",
     "@tokenized-strategy/=lib/tokenized-strategy/src/",
     "@periphery/=lib/tokenized-strategy-periphery/src/",
+    "@openzeppelin/=lib/openzeppelin-contracts/",
 ]
 
 [fuzz]

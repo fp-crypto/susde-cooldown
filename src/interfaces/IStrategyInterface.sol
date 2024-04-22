@@ -10,9 +10,13 @@ interface IStrategyInterface is IBaseHealthCheck {
 
     function auction() external view returns (address);
 
-    function maxTendBasefee() external view returns (uint64);
+    function maxTendBasefeeGwei() external view returns (uint64);
 
     function minCooldownAmount() external view returns (uint80);
+
+    function minAuctionAmount() external view returns (uint80);
+
+    function maxAuctionAmount() external view returns (uint88);
 
     function minSUSDeDiscountBps() external view returns (uint16);
 
@@ -34,15 +38,27 @@ interface IStrategyInterface is IBaseHealthCheck {
 
     /**
      * @notice Sets the max base fee for tends. Can only be called by management
-     * @param _maxTendBasefee The maximum base fee allowed
+     * @param _maxTendBasefeeGwei The maximum base fee allowed in gwei
      */
-    function setMaxTendBasefee(uint64 _maxTendBasefee) external;
+    function setMaxTendBasefeeGwei(uint16 _maxTendBasefeeGwei) external;
 
     /**
      * @notice Sets the min amount to be cooled down. Can only be called by management
      * @param _minCooldownAmount The minimum amount of sUSDe before a cooldown is triggered
      */
     function setMinCooldownAmount(uint80 _minCooldownAmount) external;
+
+    /**
+     * @notice Sets the min amount to be auctioned. Can only be called by management
+     * @param _minAuctionAmount The minimum amount of USDe to auction
+     */
+    function setMinAuctionAmount(uint80 _minAuctionAmount) external;
+
+    /**
+     * @notice Sets the max amount to be auctioned. Can only be called by management
+     * @param _maxAuctionAmount The maximum amount of USDe to auction
+     */
+    function setMaxAuctionAmount(uint88 _maxAuctionAmount) external;
 
     /**
      * @notice Sets the min discount on sUSDe to accept. Can only be called by management

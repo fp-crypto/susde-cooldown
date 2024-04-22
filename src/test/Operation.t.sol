@@ -23,8 +23,10 @@ contract OperationTest is Setup {
 
     function test_setters(
         uint256 _depositLimit,
-        uint64 _baseFee,
+        uint16 _baseFee,
         uint80 _minCooldownAmount,
+        uint80 _minAuctionAmount,
+        uint88 _maxAuctionAmount,
         uint16 _minSUSDeDiscountBps
     ) public {
         vm.expectRevert("!management");
@@ -34,16 +36,28 @@ contract OperationTest is Setup {
         assertEq(strategy.depositLimit(), _depositLimit);
 
         vm.expectRevert("!management");
-        strategy.setMaxTendBasefee(_baseFee);
+        strategy.setMaxTendBasefeeGwei(_baseFee);
         vm.prank(management);
-        strategy.setMaxTendBasefee(_baseFee);
-        assertEq(strategy.maxTendBasefee(), _baseFee);
+        strategy.setMaxTendBasefeeGwei(_baseFee);
+        assertEq(strategy.maxTendBasefeeGwei(), _baseFee);
 
         vm.expectRevert("!management");
         strategy.setMinCooldownAmount(_minCooldownAmount);
         vm.prank(management);
         strategy.setMinCooldownAmount(_minCooldownAmount);
         assertEq(strategy.minCooldownAmount(), _minCooldownAmount);
+
+        vm.expectRevert("!management");
+        strategy.setMinAuctionAmount(_minAuctionAmount);
+        vm.prank(management);
+        strategy.setMinAuctionAmount(_minAuctionAmount);
+        assertEq(strategy.minAuctionAmount(), _minAuctionAmount);
+
+        vm.expectRevert("!management");
+        strategy.setMaxAuctionAmount(_maxAuctionAmount);
+        vm.prank(management);
+        strategy.setMaxAuctionAmount(_maxAuctionAmount);
+        assertEq(strategy.maxAuctionAmount(), _maxAuctionAmount);
 
         vm.expectRevert("!management");
         strategy.setMinSUSDeDiscountBps(_minSUSDeDiscountBps);

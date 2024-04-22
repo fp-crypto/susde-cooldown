@@ -11,8 +11,6 @@ import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
 import {StrategyProxy} from "./StrategyProxy.sol";
 
-import "forge-std/console.sol"; // TODO: delete
-
 contract Strategy is BaseHealthCheck, AuctionSwapper {
     using SafeERC20 for ERC20;
 
@@ -21,10 +19,11 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         ISUSDe(0x9D39A5DE30e57443BfF2A8307A4256c8797A3497);
     uint256 public constant MAX_STRATEGY_PROXIES = 7;
 
-    uint64 public maxTendBasefee = 30e9; // 30 gwei
+    uint16 public maxTendBasefeeGwei = 30; // 30 gwei
+    uint16 public minSUSDeDiscountBps = 50; // 0.50%
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
     uint80 public minAuctionAmount = 1_000e18; // 1000 USDe
-    uint16 public minSUSDeDiscountBps = 50; // 0.50%
+    uint88 public maxAuctionAmount = 100_000e18; // 100_000 USDe
     uint256 public depositLimit;
     StrategyProxy[] public strategyProxies;
 
@@ -74,10 +73,13 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
 
     /**
      * @notice Sets the max base fee for tends. Can only be called by management
-     * @param _maxTendBasefee The maximum base fee allowed
+     * @param _maxTendBasefeeGwei The maximum base fee allowed in gwei
      */
-    function setMaxTendBasefee(uint64 _maxTendBasefee) external onlyManagement {
-        maxTendBasefee = _maxTendBasefee;
+    function setMaxTendBasefeeGwei(uint16 _maxTendBasefeeGwei)
+        external
+        onlyManagement
+    {
+        maxTendBasefeeGwei = _maxTendBasefeeGwei;
     }
 
     /**
@@ -100,6 +102,17 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         onlyManagement
     {
         minAuctionAmount = _minAuctionAmount;
+    }
+
+    /**
+     * @notice Sets the max amount to be auctioned. Can only be called by management
+     * @param _maxAuctionAmount The maximum amount of USDe to auction
+     */
+    function setMaxAuctionAmount(uint88 _maxAuctionAmount)
+        external
+        onlyManagement
+    {
+        maxAuctionAmount = _maxAuctionAmount;
     }
 
     /**
@@ -421,7 +434,11 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
             return false;
         }
 
-        if (block.basefee >= maxTendBasefee) {
+        uint256 _maxTendBasefeeGwei = uint256(maxTendBasefeeGwei);
+        if (
+            _maxTendBasefeeGwei != 0 &&
+            block.basefee >= _maxTendBasefeeGwei * 1e9
+        ) {
             return false;
         }
 
@@ -489,7 +506,7 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         returns (uint256 _kicked)
     {
         require(_token == USDE); // dev: only sell usde
-        _kicked = _looseAsset() + _cooledUSDe();
+        _kicked = Math.min(_looseAsset() + _cooledUSDe(), maxAuctionAmount);
         require(_kicked >= minAuctionAmount); // dev: too little
     }
 

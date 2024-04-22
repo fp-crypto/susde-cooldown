@@ -111,7 +111,11 @@ contract Setup is ExtendedTest, IEvents {
         _auction = Auction(
             _auctionFactory.createNewAuction(
                 tokenAddrs["SUSDE"],
-                address(_strategy)
+                address(_strategy),
+                management,
+                _auctionFactory.DEFAULT_AUCTION_LENGTH(),
+                _auctionFactory.DEFAULT_AUCTION_COOLDOWN(),
+                1e8
             )
         );
         _auctionId = _auction.enable(_strategy.asset(), address(_strategy));
@@ -197,10 +201,7 @@ contract Setup is ExtendedTest, IEvents {
             "Total sUSDe: %e",
             ERC20(tokenAddrs["SUSDE"]).balanceOf(address(strategy))
         );
-        console.log(
-            "Total cooling: %e",
-            strategy.coolingUSDe()
-        );
+        console.log("Total cooling: %e", strategy.coolingUSDe());
     }
 
     function _setTokenAddrs() internal {
