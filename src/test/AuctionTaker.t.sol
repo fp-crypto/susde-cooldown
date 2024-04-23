@@ -145,10 +145,9 @@ contract AuctionTakerTest is Setup {
         logStrategyInfo();
     }
 
-    function getCurveRouterAmountOut(uint256 amount)
-        internal
-        returns (uint256)
-    {
+    function getCurveRouterAmountOut(
+        uint256 amount
+    ) internal returns (uint256) {
         address[11] memory route;
         route[0] = address(asset);
         route[1] = 0x5dc1BF6f1e983C0b21EfB003c105133736fA0743;
@@ -171,10 +170,10 @@ contract AuctionTakerTest is Setup {
         return curveRouter.get_dy(route, swap_params, amount, pools);
     }
 
-    function getCurveRouterCalldata(uint256 amount, uint256 expected)
-        internal
-        returns (bytes memory curveRouterCallData)
-    {
+    function getCurveRouterCalldata(
+        uint256 amount,
+        uint256 expected
+    ) internal returns (bytes memory curveRouterCallData) {
         address[11] memory route;
         route[0] = address(asset);
         route[1] = 0x5dc1BF6f1e983C0b21EfB003c105133736fA0743;

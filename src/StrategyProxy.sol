@@ -58,7 +58,6 @@ contract StrategyProxy is Governance {
         _recall(_token, _amount);
     }
 
-
     /**
      * @notice Clones this StrategyProxy
      */

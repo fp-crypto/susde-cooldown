@@ -214,9 +214,10 @@ contract AuctionTest is Setup {
         logStrategyInfo();
     }
 
-    function test_auction_partiallyTake(uint256 _amount, uint16 _partBps)
-        public
-    {
+    function test_auction_partiallyTake(
+        uint256 _amount,
+        uint16 _partBps
+    ) public {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _partBps = uint16(bound(uint256(_partBps), 1000, 9000)); // between 10% and 90%
 

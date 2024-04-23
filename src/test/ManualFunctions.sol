@@ -290,7 +290,10 @@ contract ManualFunctionsTest is Setup {
         strategy.sweep(address(token));
         vm.stopPrank();
 
-        assertEq(token.balanceOf(management), managementBalanceBefore + _amount);
+        assertEq(
+            token.balanceOf(management),
+            managementBalanceBefore + _amount
+        );
         assertEq(asset.balanceOf(address(strategy)), _amount);
         assertEq(susde.balanceOf(address(strategy)), _amount);
         assertEq(token.balanceOf(address(strategy)), 0);

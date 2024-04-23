@@ -26,9 +26,9 @@ contract Strategy is BaseAuctioneer {
     uint256 public depositLimit;
     StrategyProxy[] public strategyProxies;
 
-    constructor(string memory _name)
-        BaseAuctioneer(USDE, _name, address(SUSDE), 1 days, 1 days + 1, 1e8)
-    {
+    constructor(
+        string memory _name
+    ) BaseAuctioneer(USDE, _name, address(SUSDE), 1 days, 1 days + 1, 1e8) {
         strategyProxies.push(new StrategyProxy(address(this)));
     }
 
@@ -76,10 +76,9 @@ contract Strategy is BaseAuctioneer {
      * @notice Sets the max base fee for tends. Can only be called by management
      * @param _maxTendBasefeeGwei The maximum base fee allowed in gwei
      */
-    function setMaxTendBasefeeGwei(uint16 _maxTendBasefeeGwei)
-        external
-        onlyManagement
-    {
+    function setMaxTendBasefeeGwei(
+        uint16 _maxTendBasefeeGwei
+    ) external onlyManagement {
         maxTendBasefeeGwei = _maxTendBasefeeGwei;
     }
 
@@ -87,10 +86,9 @@ contract Strategy is BaseAuctioneer {
      * @notice Sets the min amount to be cooled down. Can only be called by management
      * @param _minCooldownAmount The minimum amount of sUSDe before a cooldown is triggered
      */
-    function setMinCooldownAmount(uint80 _minCooldownAmount)
-        external
-        onlyManagement
-    {
+    function setMinCooldownAmount(
+        uint80 _minCooldownAmount
+    ) external onlyManagement {
         minCooldownAmount = _minCooldownAmount;
     }
 
@@ -98,10 +96,9 @@ contract Strategy is BaseAuctioneer {
      * @notice Sets the min amount to be auctioned. Can only be called by management
      * @param _minAuctionAmount The minimum amount of USDe to auction
      */
-    function setMinAuctionAmount(uint80 _minAuctionAmount)
-        external
-        onlyManagement
-    {
+    function setMinAuctionAmount(
+        uint80 _minAuctionAmount
+    ) external onlyManagement {
         minAuctionAmount = _minAuctionAmount;
     }
 
@@ -109,10 +106,9 @@ contract Strategy is BaseAuctioneer {
      * @notice Sets the max amount to be auctioned. Can only be called by management
      * @param _maxAuctionAmount The maximum amount of USDe to auction
      */
-    function setMaxAuctionAmount(uint88 _maxAuctionAmount)
-        external
-        onlyManagement
-    {
+    function setMaxAuctionAmount(
+        uint88 _maxAuctionAmount
+    ) external onlyManagement {
         maxAuctionAmount = _maxAuctionAmount;
     }
 
@@ -120,10 +116,9 @@ contract Strategy is BaseAuctioneer {
      * @notice Sets the min discount on sUSDe to accept. Can only be called by management
      * @param _minSUSDeDiscountBps The minimum discount in basis points when buying sUSDe
      */
-    function setMinSUSDeDiscountBps(uint16 _minSUSDeDiscountBps)
-        external
-        onlyManagement
-    {
+    function setMinSUSDeDiscountBps(
+        uint16 _minSUSDeDiscountBps
+    ) external onlyManagement {
         minSUSDeDiscountBps = _minSUSDeDiscountBps;
     }
 
@@ -145,10 +140,10 @@ contract Strategy is BaseAuctioneer {
      * @param _proxy  The proxy to recall from
      * @param _token  The token to recall
      */
-    function recallFromProxy(address _proxy, address _token)
-        external
-        onlyEmergencyAuthorized
-    {
+    function recallFromProxy(
+        address _proxy,
+        address _token
+    ) external onlyEmergencyAuthorized {
         StrategyProxy(_proxy).recall(_token);
     }
 
@@ -170,10 +165,9 @@ contract Strategy is BaseAuctioneer {
      * @notice Manually unstakes susde
      * @param _proxy  The proxy to use for cooling down
      */
-    function manualUnstakeSUSDe(address _proxy)
-        external
-        onlyEmergencyAuthorized
-    {
+    function manualUnstakeSUSDe(
+        address _proxy
+    ) external onlyEmergencyAuthorized {
         _unstakeSUSDe(StrategyProxy(_proxy));
     }
 
@@ -182,10 +176,10 @@ contract Strategy is BaseAuctioneer {
      * @param _proxy  The proxy to use for cooling down
      * @param _amount The amount of sUSDe to cooldown
      */
-    function manualCooldownSUSDe(address _proxy, uint256 _amount)
-        external
-        onlyEmergencyAuthorized
-    {
+    function manualCooldownSUSDe(
+        address _proxy,
+        uint256 _amount
+    ) external onlyEmergencyAuthorized {
         bool _proxyValid;
         for (uint8 i; i < strategyProxies.length; ++i) {
             if (address(strategyProxies[i]) == _proxy) {
@@ -401,9 +395,7 @@ contract Strategy is BaseAuctioneer {
      * @param . The current amount of idle funds that are available to deploy.
      *
      */
-    function _tend(
-        uint256 /*_totalIdle*/
-    ) internal override {
+    function _tend(uint256 /*_totalIdle*/) internal override {
         _adjustPosition();
     }
 
@@ -484,12 +476,9 @@ contract Strategy is BaseAuctioneer {
     /**
      * @param _token Address of the token being auctioned off
      */
-    function _auctionKicked(address _token)
-        internal
-        virtual
-        override
-        returns (uint256 _kicked)
-    {
+    function _auctionKicked(
+        address _token
+    ) internal virtual override returns (uint256 _kicked) {
         require(_token == USDE); // dev: only sell usde
         _kicked = Math.min(_looseAsset() + _cooledUSDe(), maxAuctionAmount);
         require(_kicked >= minAuctionAmount); // dev: too little
@@ -576,10 +565,10 @@ contract Strategy is BaseAuctioneer {
      * @param _amount The maximum amount to try to cooldown
      * @return . Amount of asset that will be released after cooldown
      */
-    function _cooldownSUSDe(StrategyProxy _strategyProxy, uint256 _amount)
-        internal
-        returns (uint256)
-    {
+    function _cooldownSUSDe(
+        StrategyProxy _strategyProxy,
+        uint256 _amount
+    ) internal returns (uint256) {
         ERC20(address(SUSDE)).safeTransfer(
             address(_strategyProxy),
             Math.min(_amount, SUSDE.maxRedeem(address(this)))
@@ -675,11 +664,9 @@ contract Strategy is BaseAuctioneer {
      * @param _owner The owner of the cooldown
      * @return . The cooldown for this contract
      */
-    function _cooldownStatus(address _owner)
-        internal
-        view
-        returns (UserCooldown memory)
-    {
+    function _cooldownStatus(
+        address _owner
+    ) internal view returns (UserCooldown memory) {
         return SUSDE.cooldowns(_owner);
     }
 }

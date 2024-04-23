@@ -32,11 +32,7 @@ interface IStakedUSDe {
 
     function transferInRewards(uint256 amount) external;
 
-    function rescueTokens(
-        address token,
-        uint256 amount,
-        address to
-    ) external;
+    function rescueTokens(address token, uint256 amount, address to) external;
 
     function getUnvestedAmount() external view returns (uint256);
 
@@ -69,58 +65,55 @@ interface IStakedUSDeCooldown is IStakedUSDe {
 
     function setCooldownDuration(uint24 duration) external;
 
-    function cooldowns(address user) external view returns (UserCooldown memory);
-    
+    function cooldowns(
+        address user
+    ) external view returns (UserCooldown memory);
+
     function cooldownDuration() external view returns (uint24);
 }
 
 interface IERC4626Minimal is IERC20 {
     function totalAssets() external view returns (uint256 totalManagedAssets);
 
-    function convertToShares(uint256 assets)
-        external
-        view
-        returns (uint256 shares);
+    function convertToShares(
+        uint256 assets
+    ) external view returns (uint256 shares);
 
-    function convertToAssets(uint256 shares)
-        external
-        view
-        returns (uint256 assets);
+    function convertToAssets(
+        uint256 shares
+    ) external view returns (uint256 assets);
 
-    function maxDeposit(address receiver)
-        external
-        view
-        returns (uint256 maxAssets);
+    function maxDeposit(
+        address receiver
+    ) external view returns (uint256 maxAssets);
 
-    function previewDeposit(uint256 assets)
-        external
-        view
-        returns (uint256 shares);
+    function previewDeposit(
+        uint256 assets
+    ) external view returns (uint256 shares);
 
-    function deposit(uint256 assets, address receiver)
-        external
-        returns (uint256 shares);
+    function deposit(
+        uint256 assets,
+        address receiver
+    ) external returns (uint256 shares);
 
-    function maxMint(address receiver)
-        external
-        view
-        returns (uint256 maxShares);
+    function maxMint(
+        address receiver
+    ) external view returns (uint256 maxShares);
 
     function previewMint(uint256 shares) external view returns (uint256 assets);
 
-    function mint(uint256 shares, address receiver)
-        external
-        returns (uint256 assets);
+    function mint(
+        uint256 shares,
+        address receiver
+    ) external returns (uint256 assets);
 
-    function maxWithdraw(address owner)
-        external
-        view
-        returns (uint256 maxAssets);
+    function maxWithdraw(
+        address owner
+    ) external view returns (uint256 maxAssets);
 
-    function previewWithdraw(uint256 assets)
-        external
-        view
-        returns (uint256 shares);
+    function previewWithdraw(
+        uint256 assets
+    ) external view returns (uint256 shares);
 
     function withdraw(
         uint256 assets,
@@ -130,10 +123,9 @@ interface IERC4626Minimal is IERC20 {
 
     function maxRedeem(address owner) external view returns (uint256 maxShares);
 
-    function previewRedeem(uint256 shares)
-        external
-        view
-        returns (uint256 assets);
+    function previewRedeem(
+        uint256 shares
+    ) external view returns (uint256 assets);
 
     function redeem(
         uint256 shares,

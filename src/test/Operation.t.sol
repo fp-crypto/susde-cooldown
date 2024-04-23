@@ -100,9 +100,10 @@ contract OperationTest is Setup {
         );
     }
 
-    function test_profitableReport(uint256 _amount, uint16 _profitFactor)
-        public
-    {
+    function test_profitableReport(
+        uint256 _amount,
+        uint16 _profitFactor
+    ) public {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
