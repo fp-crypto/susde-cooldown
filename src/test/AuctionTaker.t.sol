@@ -3,7 +3,6 @@ pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
-import {Auction, AuctionFactory} from "@periphery/Auctions/AuctionFactory.sol";
 import {ISUSDe} from "../interfaces/ethena/ISUSDe.sol";
 import {AuctionTaker} from "../periphery/AuctionTaker.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -49,34 +48,33 @@ contract AuctionTakerTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        uint256 kickedAmount = auction.kick(auctionId);
+        uint256 kickedAmount = strategy.kick(auctionId);
         assertEq(kickedAmount, _amount, "!kickedAmount");
 
-        (, , address receiver, , uint128 takeAvailable) = auction.auctions(
-            auctionId
-        );
+        (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
-        console.log("startPrice: %e", auction.startingPrice());
-
-        assertEq(receiver, address(strategy));
+        console.log("startPrice: %e", strategy.startingPrice());
 
         uint256 steps = 7_200;
         uint256 skipBps = 0; //2500;
 
-        uint256 auctionLength = auction.auctionLength();
+        uint256 auctionLength = strategy.auctionLength();
 
         uint256 curveAmountOut = getCurveRouterAmountOut(takeAvailable);
 
         skip((auctionLength * skipBps) / 1e4); // immediately skip part of the auction
         for (uint256 i = 0; i < steps; ++i) {
-            uint256 amountNeeded = auction.getAmountNeeded(
+            uint256 amountNeeded = strategy.getAmountNeeded(
                 auctionId,
                 takeAvailable
             );
 
             console.log("bt: %i", block.timestamp);
             unchecked {
-                console.log("er: %e", (amountNeeded * 1e18) / uint256(takeAvailable));
+                console.log(
+                    "er: %e",
+                    (amountNeeded * 1e18) / uint256(takeAvailable)
+                );
             }
 
             if (amountNeeded <= curveAmountOut) {
@@ -93,7 +91,7 @@ contract AuctionTakerTest is Setup {
                 );
 
                 taker.take(
-                    address(auction),
+                    address(strategy),
                     auctionId,
                     takeAvailable,
                     address(curveRouter),

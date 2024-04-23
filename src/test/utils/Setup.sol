@@ -26,7 +26,6 @@ contract Setup is ExtendedTest, IEvents {
     IStrategyInterface public strategy;
     ISUSDe susde;
 
-    Auction public auction;
     bytes32 public auctionId;
 
     mapping(string => address) public tokenAddrs;
@@ -65,7 +64,7 @@ contract Setup is ExtendedTest, IEvents {
         strategy = IStrategyInterface(setUpStrategy());
 
         // Setup auction
-        (auction, auctionId) = setUpAuction(strategy);
+        auctionId = setUpAuction(strategy);
 
         factory = strategy.FACTORY();
 
@@ -77,7 +76,6 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
         vm.label(tokenAddrs["SUSDE"], "sUSDe");
-        vm.label(address(auction), "auction");
     }
 
     function setUpStrategy() public returns (address) {
@@ -102,26 +100,10 @@ contract Setup is ExtendedTest, IEvents {
 
     function setUpAuction(IStrategyInterface _strategy)
         public
-        returns (Auction _auction, bytes32 _auctionId)
+        returns (bytes32 _auctionId)
     {
         vm.startPrank(management);
-        AuctionFactory _auctionFactory = AuctionFactory(
-            _strategy.auctionFactory()
-        );
-        _auction = Auction(
-            _auctionFactory.createNewAuction(
-                tokenAddrs["SUSDE"],
-                address(_strategy),
-                management,
-                _auctionFactory.DEFAULT_AUCTION_LENGTH(),
-                _auctionFactory.DEFAULT_AUCTION_COOLDOWN(),
-                1e8
-            )
-        );
-        _auctionId = _auction.enable(_strategy.asset(), address(_strategy));
-        _auction.setHookFlags(true, true, true, false);
-
-        _strategy.setAuction(address(_auction));
+        _auctionId = _strategy.enableAuction(_strategy.asset());
         vm.stopPrank();
     }
 

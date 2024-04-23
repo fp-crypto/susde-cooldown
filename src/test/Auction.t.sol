@@ -3,7 +3,6 @@ pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
-import {Auction, AuctionFactory} from "@periphery/Auctions/AuctionFactory.sol";
 import {ISUSDe} from "../interfaces/ethena/ISUSDe.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -23,14 +22,10 @@ contract AuctionTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        uint256 kickedAmount = auction.kick(auctionId);
+        uint256 kickedAmount = strategy.kick(auctionId);
         assertEq(kickedAmount, _amount, "!kickedAmount");
 
-        (, , address receiver, , uint128 takeAvailable) = auction.auctions(
-            auctionId
-        );
-
-        assertEq(receiver, address(strategy));
+        (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
         uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
@@ -38,10 +33,10 @@ contract AuctionTest is Setup {
         uint256 stakingRate = susde.convertToAssets(1e18);
         console.log("sr: %e", stakingRate);
 
-        skip((auction.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
+        skip((strategy.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
         for (uint256 i = 0; i < steps; ++i) {
             address buyer = address(62735);
-            uint256 amountNeeded = auction.getAmountNeeded(
+            uint256 amountNeeded = strategy.getAmountNeeded(
                 auctionId,
                 takeAvailable
             );
@@ -74,15 +69,15 @@ contract AuctionTest is Setup {
 
                 airdrop(ERC20(address(susde)), buyer, amountNeeded);
                 vm.prank(buyer);
-                susde.approve(address(auction), amountNeeded);
+                susde.approve(address(strategy), amountNeeded);
 
                 // take the auction
                 vm.prank(buyer);
-                auction.take(auctionId);
+                strategy.take(auctionId);
                 break;
             }
 
-            skip(((auction.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
+            skip(((strategy.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
         }
 
         logStrategyInfo();
@@ -135,14 +130,10 @@ contract AuctionTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        uint256 kickedAmount = auction.kick(auctionId);
+        uint256 kickedAmount = strategy.kick(auctionId);
         assertEq(kickedAmount, _amount, "!kickedAmount");
 
-        (, , address receiver, , uint128 takeAvailable) = auction.auctions(
-            auctionId
-        );
-
-        assertEq(receiver, address(strategy));
+        (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
         uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
@@ -150,10 +141,10 @@ contract AuctionTest is Setup {
         uint256 stakingRate = susde.convertToAssets(1e18);
         console.log("sr: %e", stakingRate);
 
-        skip((auction.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
+        skip((strategy.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
         for (uint256 i = 0; i < steps; ++i) {
             address buyer = address(62735);
-            uint256 amountNeeded = auction.getAmountNeeded(
+            uint256 amountNeeded = strategy.getAmountNeeded(
                 auctionId,
                 takeAvailable
             );
@@ -176,17 +167,17 @@ contract AuctionTest is Setup {
 
                 airdrop(ERC20(address(susde)), buyer, amountNeeded);
                 vm.prank(buyer);
-                susde.approve(address(auction), amountNeeded);
+                susde.approve(address(strategy), amountNeeded);
 
                 // take the auction
                 vm.startPrank(buyer);
                 vm.expectRevert();
-                auction.take(auctionId);
+                strategy.take(auctionId);
                 vm.stopPrank();
                 break;
             }
 
-            skip(((auction.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
+            skip(((strategy.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
         }
 
         logStrategyInfo();
@@ -237,24 +228,20 @@ contract AuctionTest is Setup {
 
         assertEq(strategy.totalAssets(), _amount, "!totalAssets");
 
-        uint256 kickedAmount = auction.kick(auctionId);
+        uint256 kickedAmount = strategy.kick(auctionId);
         assertEq(kickedAmount, _amount, "!kickedAmount");
 
-        (, , address receiver, , uint128 takeAvailable) = auction.auctions(
-            auctionId
-        );
-
-        assertEq(receiver, address(strategy));
+        (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
         uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
 
         uint256 stakingRate = susde.convertToAssets(1e18);
 
-        skip((auction.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
+        skip((strategy.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
         for (uint256 i = 0; i < steps; ++i) {
             address buyer = address(62735);
-            uint256 amountNeeded = auction.getAmountNeeded(
+            uint256 amountNeeded = strategy.getAmountNeeded(
                 auctionId,
                 takeAvailable
             );
@@ -270,11 +257,11 @@ contract AuctionTest is Setup {
             ) {
                 airdrop(ERC20(address(susde)), buyer, amountNeeded);
                 vm.prank(buyer);
-                susde.approve(address(auction), amountNeeded);
+                susde.approve(address(strategy), amountNeeded);
 
                 // take the auction
                 vm.prank(buyer);
-                auction.take(
+                strategy.take(
                     auctionId,
                     (uint256(takeAvailable) * uint256(_partBps)) / 1e4
                 );
@@ -282,7 +269,7 @@ contract AuctionTest is Setup {
                 break;
             }
 
-            skip(((auction.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
+            skip(((strategy.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
         }
 
         logStrategyInfo();
@@ -355,23 +342,19 @@ contract AuctionTest is Setup {
 
         logStrategyInfo();
 
-        uint256 kickedAmount = auction.kick(auctionId);
+        uint256 kickedAmount = strategy.kick(auctionId);
         assertGt(kickedAmount, _amount, "!kickedAmount");
         assertEq(asset.balanceOf(address(strategy)), 0);
 
-        (, , address receiver, , uint128 takeAvailable) = auction.auctions(
-            auctionId
-        );
-
-        assertEq(receiver, address(strategy));
+        (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
         uint256 steps = 1_440;
         uint256 skipBps = 0; //2500;
 
-        skip((auction.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
+        skip((strategy.auctionLength() * skipBps) / 1e4); // immediately skip part of the auction
         for (uint256 i = 0; i < steps; ++i) {
             address buyer = address(62735);
-            uint256 amountNeeded = auction.getAmountNeeded(
+            uint256 amountNeeded = strategy.getAmountNeeded(
                 auctionId,
                 takeAvailable
             );
@@ -391,15 +374,15 @@ contract AuctionTest is Setup {
             ) {
                 airdrop(ERC20(address(susde)), buyer, amountNeeded);
                 vm.prank(buyer);
-                susde.approve(address(auction), amountNeeded);
+                susde.approve(address(strategy), amountNeeded);
 
                 // take the auction
                 vm.prank(buyer);
-                auction.take(auctionId);
+                strategy.take(auctionId);
                 break;
             }
 
-            skip(((auction.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
+            skip(((strategy.auctionLength() * (1e4 - skipBps)) / 1e4) / steps);
         }
 
         logStrategyInfo();
@@ -425,11 +408,7 @@ contract AuctionTest is Setup {
             0,
             "!susde"
         );
-        assertEq(
-            strategy.coolingUSDe(),
-            strategy.totalAssets(),
-            "!cooling"
-        );
+        assertEq(strategy.coolingUSDe(), strategy.totalAssets(), "!cooling");
 
         // Check return Values
         assertGe(profit, 0, "!profit");
@@ -457,7 +436,7 @@ contract AuctionTest is Setup {
         uint256 _amount = 10_000e18;
 
         vm.expectRevert(); // below minimum
-        auction.kick(auctionId);
+        strategy.kick(auctionId);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -470,7 +449,7 @@ contract AuctionTest is Setup {
         vm.prank(management);
         strategy.setMaxAuctionAmount(maxAuctionAmount);
 
-        uint256 kickedAmount = auction.kick(auctionId);
+        uint256 kickedAmount = strategy.kick(auctionId);
         assertEq(kickedAmount, maxAuctionAmount, "!kickedAmount");
         assertEq(asset.balanceOf(address(strategy)), _amount);
     }

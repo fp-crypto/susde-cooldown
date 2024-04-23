@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {BaseHealthCheck} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
+import {BaseAuctioneer} from "@periphery/Bases/Auctioneer/BaseAuctioneer.sol";
 import {ERC20} from "@tokenized-strategy/BaseStrategy.sol";
-import {Auction, AuctionSwapper} from "@periphery/swappers/AuctionSwapper.sol";
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -11,7 +10,7 @@ import {ISUSDe, UserCooldown} from "./interfaces/ethena/ISUSDe.sol";
 
 import {StrategyProxy} from "./StrategyProxy.sol";
 
-contract Strategy is BaseHealthCheck, AuctionSwapper {
+contract Strategy is BaseAuctioneer {
     using SafeERC20 for ERC20;
 
     address private constant USDE = 0x4c9EDD5852cd905f086C759E8383e09bff1E68B3;
@@ -27,7 +26,9 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     uint256 public depositLimit;
     StrategyProxy[] public strategyProxies;
 
-    constructor(string memory _name) BaseHealthCheck(USDE, _name) {
+    constructor(string memory _name)
+        BaseAuctioneer(USDE, _name, address(SUSDE), 1 days, 1 days + 1, 1e8)
+    {
         strategyProxies.push(new StrategyProxy(address(this)));
     }
 
@@ -124,17 +125,6 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         onlyManagement
     {
         minSUSDeDiscountBps = _minSUSDeDiscountBps;
-    }
-
-    /**
-     * @notice Sets the auction contract. Can only be called by emergency authorized
-     * @param _auction The minimum auction contract address
-     */
-    function setAuction(address _auction) external onlyEmergencyAuthorized {
-        if (_auction != address(0)) {
-            require(Auction(_auction).want() == address(SUSDE)); // dev: wrong want
-        }
-        auction = _auction;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -351,17 +341,12 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
 
         _withdrawLimit += _cooledUSDe();
 
-        Auction _auction = Auction(auction);
-        if (address(_auction) != address(0)) {
-            bytes32 _auctionId = _auction.getAuctionId(address(asset));
-            (, , , uint256 _amountAvailableForAuction) = _auction.auctionInfo(
-                _auctionId
-            );
-            if (_withdrawLimit > _amountAvailableForAuction) {
-                _withdrawLimit -= _amountAvailableForAuction;
-            } else {
-                _withdrawLimit = 0;
-            }
+        bytes32 _auctionId = getAuctionId(address(asset));
+        (, , , uint256 _amountAvailableForAuction) = auctionInfo(_auctionId);
+        if (_withdrawLimit > _amountAvailableForAuction) {
+            _withdrawLimit -= _amountAvailableForAuction;
+        } else {
+            _withdrawLimit = 0;
         }
     }
 
@@ -511,15 +496,17 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
     }
 
     /**
-     * @param . Address of the token being taken.
+     * @param _token Address of the token being taken.
      * @param _usdeTakeAmount Amount of `_token` needed.
      * @param _susdeReceiveAmount Amount of `want` that will be payed.
      */
     function _preTake(
-        address, /*_token*/
+        address _token,
         uint256 _usdeTakeAmount,
         uint256 _susdeReceiveAmount
     ) internal virtual override {
+        require(_token == address(asset));
+
         uint256 _receiveAmountInUSDe = SUSDE.convertToAssets(
             _susdeReceiveAmount
         );
@@ -532,8 +519,6 @@ contract Strategy is BaseHealthCheck, AuctionSwapper {
         if (_usdeTakeAmount > _idleUSDe) {
             _freeFunds(_usdeTakeAmount - _idleUSDe);
         }
-
-        asset.transfer(address(auction), _usdeTakeAmount);
     }
 
     /*//////////////////////////////////////////////////////////////

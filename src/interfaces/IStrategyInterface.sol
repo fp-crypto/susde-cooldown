@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.sol";
+import {IBaseAuctioneer} from "@periphery/Bases/Auctioneer/IBaseAuctioneer.sol";
 
-interface IStrategyInterface is IBaseHealthCheck {
+interface IStrategyInterface is IBaseAuctioneer {
     function MAX_STRATEGY_PROXIES() external view returns (uint256);
 
     function auctionFactory() external view returns (address);
