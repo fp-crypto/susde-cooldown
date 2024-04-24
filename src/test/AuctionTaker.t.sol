@@ -53,9 +53,9 @@ contract AuctionTakerTest is Setup {
 
         (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
-        console.log("startPrice: %e", strategy.startingPrice());
+        console.log("startPrice: %e", strategy.auctionStartingPrice());
 
-        uint256 steps = 7_200;
+        uint256 steps = 1_200;
         uint256 skipBps = 0; //2500;
 
         uint256 auctionLength = strategy.auctionLength();
@@ -69,11 +69,14 @@ contract AuctionTakerTest is Setup {
                 takeAvailable
             );
 
-            console.log("bt: %i", block.timestamp);
             unchecked {
                 console.log(
                     "er: %e",
                     (amountNeeded * 1e18) / uint256(takeAvailable)
+                );
+                console.log(
+                    "er^-1: %e",
+                    (uint256(takeAvailable) * 1e18) / amountNeeded
                 );
             }
 
@@ -83,6 +86,7 @@ contract AuctionTakerTest is Setup {
                 console.log("amountNeeded: %e", amountNeeded);
                 console.log("takeAvailable: %e", takeAvailable);
                 console.log("curveAmountOut: %e", curveAmountOut);
+                console.log("amountNeedSusde: ");
                 console.log(susde.convertToAssets(amountNeeded));
 
                 bytes memory curveRouterCallData = getCurveRouterCalldata(
