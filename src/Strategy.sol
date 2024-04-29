@@ -23,12 +23,22 @@ contract Strategy is BaseAuctioneer {
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
     uint80 public minAuctionAmount = 1_000e18; // 1000 USDe
     uint88 public maxAuctionAmount = 100_000e18; // 100_000 USDe
+    uint64 public auctionStepSize = 5e16;
     uint256 public depositLimit;
     StrategyProxy[] public strategyProxies;
 
     constructor(
         string memory _name
-    ) BaseAuctioneer(USDE, _name, address(SUSDE), 1 days, 1 days + 1, 1e8) {
+    )
+        BaseAuctioneer(
+            USDE,
+            _name,
+            address(SUSDE), // auction want
+            1 days, // auction length (1 day)
+            1 days + 1, // auction cooldown (1 second)
+            WAD // auction starting price 1:1
+        )
+    {
         strategyProxies.push(new StrategyProxy(address(this)));
     }
 
@@ -113,6 +123,30 @@ contract Strategy is BaseAuctioneer {
     }
 
     /**
+     * @notice Sets the starting price for the auction. Can only be called by management
+     * @param _auctionStartingPrice The price at which to start the auction
+     */
+    function setAuctionStartingPrice(
+        uint256 _auctionStartingPrice
+    ) external onlyManagement {
+        bytes32 _auctionId = getAuctionId(USDE);
+        require(auctions[_auctionId].kicked + auctionLength < block.timestamp); // dev: live auction
+        auctionStartingPrice = _auctionStartingPrice;
+    }
+
+    /**
+     * @notice Sets the step size for the auction. Can only be called by management
+     * @param _auctionStepSize The size step to take per unit time
+     */
+    function setAuctionStepSize(
+        uint64 _auctionStepSize
+    ) external onlyManagement {
+        bytes32 _auctionId = getAuctionId(USDE);
+        require(auctions[_auctionId].kicked + auctionLength < block.timestamp); // dev: live auction
+        auctionStepSize = _auctionStepSize;
+    }
+
+    /**
      * @notice Sets the min discount on sUSDe to accept. Can only be called by management
      * @param _minSUSDeDiscountBps The minimum discount in basis points when buying sUSDe
      */
@@ -187,7 +221,7 @@ contract Strategy is BaseAuctioneer {
                 break;
             }
         }
-        require(_proxyValid); // dev: proxy must be in strategyProxies list
+        require(_proxyValid, "!valid"); // dev: proxy must be in strategyProxies list
         _cooldownSUSDe(StrategyProxy(_proxy), _amount);
     }
 
@@ -479,9 +513,9 @@ contract Strategy is BaseAuctioneer {
     function _auctionKicked(
         address _token
     ) internal virtual override returns (uint256 _kicked) {
-        require(_token == USDE); // dev: only sell usde
+        require(_token == address(asset), "!asset"); // dev: only sell usde
         _kicked = Math.min(_looseAsset() + _cooledUSDe(), maxAuctionAmount);
-        require(_kicked >= minAuctionAmount); // dev: too little
+        require(_kicked >= minAuctionAmount, "!min"); // dev: too little
     }
 
     /**
@@ -494,20 +528,38 @@ contract Strategy is BaseAuctioneer {
         uint256 _usdeTakeAmount,
         uint256 _susdeReceiveAmount
     ) internal virtual override {
-        require(_token == address(asset));
+        require(_token == address(asset), "!asset");
 
         uint256 _receiveAmountInUSDe = SUSDE.convertToAssets(
             _susdeReceiveAmount
         );
+        require(_receiveAmountInUSDe > _usdeTakeAmount, "!discount"); // dev: no discount
         uint256 _surplusBps = ((_receiveAmountInUSDe - _usdeTakeAmount) *
             MAX_BPS) / _usdeTakeAmount;
-        require(_surplusBps >= minSUSDeDiscountBps); // dev: below minDiscount
+        require(_surplusBps >= minSUSDeDiscountBps, "!minDiscount"); // dev: below minDiscount
 
         // free funds if required
         uint256 _idleUSDe = _looseAsset();
         if (_usdeTakeAmount > _idleUSDe) {
             _freeFunds(_usdeTakeAmount - _idleUSDe);
         }
+    }
+
+    function _price(
+        uint256 _kicked,
+        uint256 _available,
+        uint256 _timestamp
+    ) internal view virtual override returns (uint256) {
+        if (_available == 0) return 0;
+
+        uint256 _secondsElapsed = _timestamp - _kicked;
+        uint256 _auctionLength = uint256(auctionLength);
+
+        if (_secondsElapsed > _auctionLength) return 0;
+
+        return
+            auctionStartingPrice -
+            ((uint256(auctionStepSize) * _secondsElapsed) / auctionLength);
     }
 
     /*//////////////////////////////////////////////////////////////

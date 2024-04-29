@@ -17,9 +17,10 @@ contract StrategyProxy is Governance {
         original = true;
     }
 
-    function initialize(address _strategy) public {
+    function initialize(address _strategy) external {
         require(address(governance) == address(0), "!initiliazd");
         governance = _strategy;
+        emit GovernanceTransferred(address(0), _strategy);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -103,7 +104,7 @@ contract StrategyProxy is Governance {
      * @notice Clones this StrategyProxy if it's the original
      */
     function _clone() internal returns (address _newStrategyProxy) {
-        require(original); // dev: not original
+        require(original, "!og"); // dev: not original
 
         // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
         bytes20 addressBytes = bytes20(address(this));

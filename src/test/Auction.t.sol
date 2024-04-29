@@ -454,4 +454,37 @@ contract AuctionTest is Setup {
         assertEq(kickedAmount, maxAuctionAmount, "!kickedAmount");
         assertEq(asset.balanceOf(address(strategy)), _amount);
     }
+
+    function test_auction_settersRevert(
+        uint256 _auctionStartingPrice,
+        uint64 _auctionStepSize
+    ) public {
+        uint256 _amount = maxFuzzAmount;
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        uint256 kickedAmount = strategy.kick(auctionId);
+        assertEq(kickedAmount, _amount, "!kickedAmount");
+
+        vm.startPrank(management);
+        
+        vm.expectRevert();
+        strategy.setAuctionStartingPrice(_auctionStartingPrice);
+        
+        vm.expectRevert();
+        strategy.setAuctionStepSize(_auctionStepSize);
+
+        skip(strategy.auctionLength() + 1);
+
+        strategy.setAuctionStartingPrice(_auctionStartingPrice);
+        assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
+
+        strategy.setAuctionStepSize(_auctionStepSize);
+        assertEq(strategy.auctionStepSize(), _auctionStepSize);
+        
+        vm.stopPrank();
+    }
 }
