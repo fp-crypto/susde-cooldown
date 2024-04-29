@@ -17,7 +17,7 @@ interface IStrategyInterface is IBaseAuctioneer {
     function minAuctionAmount() external view returns (uint80);
 
     function maxAuctionAmount() external view returns (uint88);
-    
+
     function auctionStepSize() external view returns (uint64);
 
     function minSUSDeDiscountBps() external view returns (uint16);

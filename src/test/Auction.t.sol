@@ -470,10 +470,10 @@ contract AuctionTest is Setup {
         assertEq(kickedAmount, _amount, "!kickedAmount");
 
         vm.startPrank(management);
-        
+
         vm.expectRevert();
         strategy.setAuctionStartingPrice(_auctionStartingPrice);
-        
+
         vm.expectRevert();
         strategy.setAuctionStepSize(_auctionStepSize);
 
@@ -484,7 +484,7 @@ contract AuctionTest is Setup {
 
         strategy.setAuctionStepSize(_auctionStepSize);
         assertEq(strategy.auctionStepSize(), _auctionStepSize);
-        
+
         vm.stopPrank();
     }
 }
