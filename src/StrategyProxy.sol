@@ -18,7 +18,7 @@ contract StrategyProxy is Governance {
     }
 
     function initialize(address _strategy) external {
-        require(address(governance) == address(0), "!initiliazd");
+        require(address(governance) == address(0), "!initialized");
         governance = _strategy;
         emit GovernanceTransferred(address(0), _strategy);
     }
@@ -43,7 +43,7 @@ contract StrategyProxy is Governance {
     }
 
     /**
-     * @notice Recalls the ERC20 tokens to goverance
+     * @notice Recalls the ERC20 tokens to governance
      * @param _token  The token to recall
      */
     function recall(address _token) external onlyGovernance {
@@ -51,7 +51,7 @@ contract StrategyProxy is Governance {
     }
 
     /**
-     * @notice Recalls the ERC20 tokens to goverance
+     * @notice Recalls the ERC20 tokens to governance
      * @param _token  The token to recall
      * @param _amount The amount to recall
      */
