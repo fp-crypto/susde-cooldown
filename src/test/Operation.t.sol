@@ -28,7 +28,8 @@ contract OperationTest is Setup {
         uint80 _minAuctionAmount,
         uint88 _maxAuctionAmount,
         uint256 _auctionStartingPrice,
-        uint64 _auctionStepSize,
+        uint64 _auctionRangeSize,
+        uint32 _auctionLength,
         uint16 _minSUSDeDiscountBps
     ) public {
         vm.expectRevert("!management");
@@ -69,15 +70,40 @@ contract OperationTest is Setup {
 
         vm.expectRevert("!management");
         strategy.setAuctionStartingPrice(_auctionStartingPrice);
-        vm.prank(management);
+        vm.startPrank(management);
+        if (
+            _auctionStartingPrice == 0 ||
+            _auctionStartingPrice < strategy.auctionRangeSize()
+        ) vm.expectRevert();
         strategy.setAuctionStartingPrice(_auctionStartingPrice);
-        assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
+        vm.stopPrank();
+        if (
+            _auctionStartingPrice != 0 &&
+            _auctionStartingPrice >= strategy.auctionRangeSize()
+        ) assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
 
         vm.expectRevert("!management");
-        strategy.setAuctionStepSize(_auctionStepSize);
-        vm.prank(management);
-        strategy.setAuctionStepSize(_auctionStepSize);
-        assertEq(strategy.auctionStepSize(), _auctionStepSize);
+        strategy.setAuctionRangeSize(_auctionRangeSize);
+        vm.startPrank(management);
+        if (
+            _auctionRangeSize == 0 ||
+            _auctionRangeSize > strategy.auctionStartingPrice()
+        ) vm.expectRevert();
+        strategy.setAuctionRangeSize(_auctionRangeSize);
+        vm.stopPrank();
+        if (
+            _auctionRangeSize != 0 &&
+            _auctionRangeSize <= strategy.auctionStartingPrice()
+        ) assertEq(strategy.auctionRangeSize(), _auctionRangeSize);
+
+        vm.expectRevert("!management");
+        strategy.setAuctionLength(_auctionLength);
+        vm.startPrank(management);
+        if (_auctionLength == 0) vm.expectRevert(bytes("!0"));
+        strategy.setAuctionLength(_auctionLength);
+        vm.stopPrank();
+        if (_auctionLength != 0)
+            assertEq(strategy.auctionLength(), _auctionLength);
     }
 
     function test_operation(uint256 _amount) public {

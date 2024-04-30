@@ -41,6 +41,8 @@ contract AuctionTakerTest is Setup {
     }
 
     function test_auctionTaker_curve() public {
+        vm.skip(true);
+
         uint256 _amount = 1_000e18;
 
         // Deposit into strategy

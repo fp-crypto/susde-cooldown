@@ -23,7 +23,7 @@ contract Strategy is BaseAuctioneer {
     uint80 public minCooldownAmount = 1_000e18; // default minimium is 1_000e18;
     uint80 public minAuctionAmount = 1_000e18; // 1000 USDe
     uint88 public maxAuctionAmount = 100_000e18; // 100_000 USDe
-    uint64 public auctionStepSize = 5e16;
+    uint64 public auctionRangeSize = 5e16;
     uint256 public depositLimit;
     StrategyProxy[] public strategyProxies;
 
@@ -129,21 +129,37 @@ contract Strategy is BaseAuctioneer {
     function setAuctionStartingPrice(
         uint256 _auctionStartingPrice
     ) external onlyManagement {
+        require(_auctionStartingPrice != 0, "!0"); // dev: cannot be zero
+        require(_auctionStartingPrice >= auctionRangeSize); // dev: starting price less than range
         bytes32 _auctionId = getAuctionId(USDE);
         require(auctions[_auctionId].kicked + auctionLength < block.timestamp); // dev: live auction
         auctionStartingPrice = _auctionStartingPrice;
     }
 
     /**
-     * @notice Sets the step size for the auction. Can only be called by management
-     * @param _auctionStepSize The size step to take per unit time
+     * @notice Sets the range for the auction. The auction will go from the starting price
+     * to starting price minus auctionRangeSize. Can only be called by management
+     * @param _auctionRangeSize The width of the range for the auction.
      */
-    function setAuctionStepSize(
-        uint64 _auctionStepSize
+    function setAuctionRangeSize(
+        uint64 _auctionRangeSize
     ) external onlyManagement {
+        require(_auctionRangeSize != 0, "!0"); // dev: cannot be zero
+        require(_auctionRangeSize <= auctionStartingPrice);  // dev: range greater than starting price
         bytes32 _auctionId = getAuctionId(USDE);
         require(auctions[_auctionId].kicked + auctionLength < block.timestamp); // dev: live auction
-        auctionStepSize = _auctionStepSize;
+        auctionRangeSize = _auctionRangeSize;
+    }
+
+    /**
+     * @notice Sets the length of time an auction lasts. Can only be called by management
+     * @param _auctionLength The length of the auction
+     */
+    function setAuctionLength(uint32 _auctionLength) external onlyManagement {
+        require(_auctionLength != 0, "!0"); // dev: cannot be zero
+        bytes32 _auctionId = getAuctionId(USDE);
+        require(auctions[_auctionId].kicked + auctionLength < block.timestamp); // dev: live auction
+        auctionLength = _auctionLength;
     }
 
     /**
@@ -559,7 +575,7 @@ contract Strategy is BaseAuctioneer {
 
         return
             auctionStartingPrice -
-            ((uint256(auctionStepSize) * _secondsElapsed) / auctionLength);
+            ((uint256(auctionRangeSize) * _secondsElapsed) / auctionLength);
     }
 
     /*//////////////////////////////////////////////////////////////

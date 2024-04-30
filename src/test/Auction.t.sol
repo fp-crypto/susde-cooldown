@@ -457,9 +457,106 @@ contract AuctionTest is Setup {
 
     function test_auction_settersRevert(
         uint256 _auctionStartingPrice,
-        uint64 _auctionStepSize
+        uint64 _auctionRangeSize,
+        uint32 _auctionLength
     ) public {
+        _auctionStartingPrice = bound(
+            _auctionStartingPrice,
+            1,
+            type(uint256).max
+        );
+        _auctionRangeSize = uint64(
+            bound(
+                uint256(_auctionRangeSize),
+                1,
+                Math.min(_auctionStartingPrice, type(uint64).max)
+            )
+        );
+        _auctionLength = uint32(
+            bound(uint256(_auctionLength), 1, type(uint32).max)
+        );
+
         uint256 _amount = maxFuzzAmount;
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        vm.startPrank(management);
+
+        vm.expectRevert(bytes("!0"));
+        strategy.setAuctionStartingPrice(0);
+
+        vm.expectRevert(bytes("!0"));
+        strategy.setAuctionRangeSize(0);
+
+        vm.expectRevert(bytes("!0"));
+        strategy.setAuctionLength(0);
+
+        vm.expectRevert();
+        strategy.setAuctionStartingPrice(uint256(1));
+
+        vm.expectRevert();
+        strategy.setAuctionRangeSize(type(uint64).max);
+
+        uint256 kickedAmount = strategy.kick(auctionId);
+        assertEq(kickedAmount, _amount, "!kickedAmount");
+
+        vm.expectRevert();
+        strategy.setAuctionStartingPrice(_auctionStartingPrice);
+
+        vm.expectRevert();
+        strategy.setAuctionRangeSize(_auctionRangeSize);
+
+        vm.expectRevert();
+        strategy.setAuctionLength(_auctionLength);
+
+        skip(strategy.auctionLength() + 1);
+
+        if (_auctionRangeSize > strategy.auctionStartingPrice()) {
+            strategy.setAuctionStartingPrice(_auctionStartingPrice);
+            assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
+
+            strategy.setAuctionRangeSize(_auctionRangeSize);
+            assertEq(strategy.auctionRangeSize(), _auctionRangeSize);
+        } else {
+            strategy.setAuctionRangeSize(_auctionRangeSize);
+            assertEq(strategy.auctionRangeSize(), _auctionRangeSize);
+
+            strategy.setAuctionStartingPrice(_auctionStartingPrice);
+            assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
+        }
+
+        vm.stopPrank();
+    }
+
+    function test_auction_startingPriceAndStepSize(
+        uint64 _auctionStartingPrice,
+        uint64 _auctionRangeSize,
+        uint32 _auctionLength
+    ) public {
+        _auctionStartingPrice = uint64(
+            bound(uint256(_auctionStartingPrice), 1, 1e18)
+        );
+        _auctionRangeSize = uint64(
+            bound(uint256(_auctionRangeSize), 1, _auctionStartingPrice)
+        );
+        _auctionLength = uint32(
+            bound(uint256(_auctionLength), 1, type(uint32).max)
+        );
+        uint256 _amount = maxFuzzAmount;
+
+        vm.startPrank(management);
+
+        strategy.setAuctionRangeSize(_auctionRangeSize);
+        assertEq(strategy.auctionRangeSize(), _auctionRangeSize);
+        strategy.setAuctionStartingPrice(_auctionStartingPrice);
+        assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
+        strategy.setAuctionLength(_auctionLength);
+        assertEq(strategy.auctionLength(), _auctionLength);
+
+        vm.stopPrank();
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -469,22 +566,24 @@ contract AuctionTest is Setup {
         uint256 kickedAmount = strategy.kick(auctionId);
         assertEq(kickedAmount, _amount, "!kickedAmount");
 
-        vm.startPrank(management);
+        (, , , uint128 takeAvailable) = strategy.auctions(auctionId);
 
-        vm.expectRevert();
-        strategy.setAuctionStartingPrice(_auctionStartingPrice);
+        uint256 amountNeeded = strategy.getAmountNeeded(
+            auctionId,
+            takeAvailable
+        );
+        assertEq(strategy.price(auctionId), _auctionStartingPrice);
 
-        vm.expectRevert();
-        strategy.setAuctionStepSize(_auctionStepSize);
+        skip(1);
+        assertEq(
+            strategy.price(auctionId),
+            _auctionStartingPrice - (_auctionRangeSize / _auctionLength)
+        );
 
-        skip(strategy.auctionLength() + 1);
-
-        strategy.setAuctionStartingPrice(_auctionStartingPrice);
-        assertEq(strategy.auctionStartingPrice(), _auctionStartingPrice);
-
-        strategy.setAuctionStepSize(_auctionStepSize);
-        assertEq(strategy.auctionStepSize(), _auctionStepSize);
-
-        vm.stopPrank();
+        skip(_auctionLength - 1);
+        assertEq(
+            strategy.price(auctionId),
+            _auctionStartingPrice - _auctionRangeSize
+        );
     }
 }

@@ -18,7 +18,7 @@ interface IStrategyInterface is IBaseAuctioneer {
 
     function maxAuctionAmount() external view returns (uint88);
 
-    function auctionStepSize() external view returns (uint64);
+    function auctionRangeSize() external view returns (uint64);
 
     function minSUSDeDiscountBps() external view returns (uint16);
 
@@ -69,10 +69,17 @@ interface IStrategyInterface is IBaseAuctioneer {
     function setAuctionStartingPrice(uint256 _auctionStartingPrice) external;
 
     /**
-     * @notice Sets the step size for the auction. Can only be called by management
-     * @param _auctionStepSize The size step to take per unit time
+     * @notice Sets the range for the auction. The auction will go from the starting price
+     * to starting price minus auctionRangeSize. Can only be called by management
+     * @param _auctionRangeSize The width of the range for the auction.
      */
-    function setAuctionStepSize(uint64 _auctionStepSize) external;
+    function setAuctionRangeSize(uint64 _auctionRangeSize) external;
+
+    /**
+     * @notice Sets the length of time an auction lasts. Can only be called by management
+     * @param _auctionLength The length of the auction
+     */
+    function setAuctionLength(uint32 _auctionLength) external;
 
     /**
      * @notice Sets the min discount on sUSDe to accept. Can only be called by management
