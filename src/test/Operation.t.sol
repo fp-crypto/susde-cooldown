@@ -27,10 +27,11 @@ contract OperationTest is Setup {
         uint80 _minCooldownAmount,
         uint80 _minAuctionAmount,
         uint88 _maxAuctionAmount,
+        uint16 _minSUSDeDiscountBps,
         uint256 _auctionStartingPrice,
         uint64 _auctionRangeSize,
         uint32 _auctionLength,
-        uint16 _minSUSDeDiscountBps
+        uint32 _auctionCooldown
     ) public {
         vm.expectRevert("!management");
         strategy.setDepositLimit(_depositLimit);
@@ -104,6 +105,15 @@ contract OperationTest is Setup {
         vm.stopPrank();
         if (_auctionLength != 0)
             assertEq(strategy.auctionLength(), _auctionLength);
+
+        vm.expectRevert("!management");
+        strategy.setAuctionCooldown(_auctionCooldown);
+        vm.startPrank(management);
+        if (_auctionCooldown < strategy.auctionLength()) vm.expectRevert(bytes("cooldown"));
+        strategy.setAuctionCooldown(_auctionCooldown);
+        vm.stopPrank();
+        if (_auctionCooldown >= strategy.auctionLength())
+            assertEq(strategy.auctionCooldown(), _auctionCooldown);
     }
 
     function test_operation(uint256 _amount) public {

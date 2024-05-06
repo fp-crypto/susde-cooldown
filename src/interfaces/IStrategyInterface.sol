@@ -82,6 +82,12 @@ interface IStrategyInterface is IBaseAuctioneer {
     function setAuctionLength(uint32 _auctionLength) external;
 
     /**
+     * @notice Sets the length of time between the start of auctions. Can only be called by management
+     * @param _auctionCooldown The duration between auction starts
+     */
+    function setAuctionCooldown(uint32 _auctionCooldown) external;
+
+    /**
      * @notice Sets the min discount on sUSDe to accept. Can only be called by management
      * @param _minSUSDeDiscountBps The minimum discount in basis points when buying sUSDe
      */

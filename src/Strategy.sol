@@ -35,7 +35,7 @@ contract Strategy is BaseAuctioneer {
             _name,
             address(SUSDE), // auction want
             1 days, // auction length (1 day)
-            1 days + 1, // auction cooldown (1 second)
+            1 days, // auction cooldown (0 seconds)
             WAD // auction starting price 1:1
         )
     {
@@ -160,6 +160,15 @@ contract Strategy is BaseAuctioneer {
         bytes32 _auctionId = getAuctionId(USDE);
         require(auctions[_auctionId].kicked + auctionLength < block.timestamp); // dev: live auction
         auctionLength = _auctionLength;
+    }
+
+    /**
+     * @notice Sets the length of time between the start of auctions. Can only be called by management
+     * @param _auctionCooldown The duration between auction starts
+     */
+    function setAuctionCooldown(uint32 _auctionCooldown) external onlyManagement {
+        require(_auctionCooldown >= auctionLength, "cooldown"); // dev: must be greater than or equal to length
+        auctionCooldown = _auctionCooldown;
     }
 
     /**
